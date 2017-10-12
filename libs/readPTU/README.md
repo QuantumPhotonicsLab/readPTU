@@ -27,6 +27,13 @@ The g2 measurement in particular has two available algorithms which may be selec
 * ```fast=False``` is typically an order of magnitude slower than fast mode. This algorithm will consider all possible pairs of start-stop photons with a delay smaller than the correlation window. The main advantage is that for a given start photon, you count all the subsequent stop photons, removing the exponential decay artefact. You usually end up with more coincidence counts as well.
 
 
+## Dynamic library compilation
+
+readPTU uses the cffi package which handles building and interfacing of C dynamic libraries. The C code is in the _readTTTRRecords-for-import.c_ file, which is imported in Python and compiled by executing the _\_readTTTRRecords_build.py_ file.
+
+If there is no dynamic library matching your system, you should simply execute _\_readTTTRRecords_build.py_ in python. You still need to have a compiler installed. If it does not work, you should explore cffi's [documentation](http://cffi.readthedocs.io/en/latest/overview.html?highlight=compile#abi-versus-api). Some hints for Windows: [here](https://stackoverflow.com/questions/16787649/how-to-configure-python-cffi-library-to-use-mingw) and [here](http://preshing.com/20141108/how-to-install-the-latest-gcc-on-windows/). On Linux, simply installing gcc should work.
+
+
 
 ## Changelog
 Raphaël Proux - 12/10/2017 - first release with T2 mode only and support of Hydraharp v2 tested, Hydraharp v1 and Picohard untested (but implemented).
