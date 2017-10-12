@@ -1,4 +1,4 @@
-#readPTU library
+# readPTU library
 
 PicoQuant uses a specific homemade file format called PTU for its time-tag time-resolved measurements. This format is subsequent to the former .pt2 or .pt3 and can handle both T2 and T3 acquisition modes. 
 
