@@ -37,3 +37,4 @@ If there is no dynamic library matching your system, you should simply execute _
 
 ## Changelog
 Raphaël Proux - 12/10/2017 - first release with T2 mode only and support of Hydraharp v2 tested, Hydraharp v1 and Picohard untested (but implemented).
+/
