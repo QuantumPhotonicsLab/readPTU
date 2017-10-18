@@ -37,4 +37,8 @@ If there is no dynamic library matching your system, you should simply execute _
 
 ## Changelog
 Raphaël Proux - 12/10/2017 - first release with T2 mode only and support of Hydraharp v2 tested, Hydraharp v1 and Picohard untested (but implemented).
+<<<<<<< HEAD
 Raphaël Proux - 18/10/2017 - tested on windows 7 64 bits! It works!! (you need to add ```import setuptools``` in the python build file though).
+=======
+/
+>>>>>>> 8c045628727df315cc53aafe2597b7088bdc3542
