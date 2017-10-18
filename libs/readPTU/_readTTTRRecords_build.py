@@ -7,6 +7,7 @@ Created on Wed Sep 27 16:16:03 2017
 """
 
 from cffi import FFI
+import setuptools  # necessary magic import for windows -- don't think, just accept it!
 ffibuilder = FFI()
 
 with open('readTTTRRecords-for-import.c', 'r') as myfile:
