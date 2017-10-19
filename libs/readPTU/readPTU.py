@@ -390,8 +390,6 @@ class PTUmeasurement():
         return pl.array(time_vector[:-1]), pl.array(histogram)
         
     
-        
-    
 if __name__ == '__main__':
 
     timetrace_resolution = 1  # in seconds
