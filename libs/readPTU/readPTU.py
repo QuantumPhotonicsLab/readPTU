@@ -7,8 +7,8 @@ Created on Thu May  4 18:36:54 2017
 
 Largely inspired from PicoQuant examples:
     https://github.com/PicoQuant/PicoQuant-Time-Tagged-File-Format-Demos
-and (in particular, to read the header) from a jupyter notebook 
-by tritemio on GitHub: 
+and (in particular, to read the header) from a jupyter notebook
+by tritemio on GitHub:
     https://gist.github.com/tritemio/734347586bc999f39f9ffe0ac5ba0e66
 
 Please note:
@@ -18,12 +18,14 @@ Please note:
 """
 
 import pylab as pl
-import os, sys
+import os
+import sys
 import struct
 import mmap
 import time
 import collections as coll
 from _readTTTRRecords import ffi, lib
+
 
 class PTUfile():
     """
@@ -109,32 +111,32 @@ class PTUfile():
         
         # var initialization
         self.tags = coll.OrderedDict()
-        
+
 #        print('Size of file:', os.path.getsize(filename))
-        
+
         self.filehandle = open(filename, 'rb')
         self.mm = mmap.mmap(self.filehandle.fileno(), 0, access=mmap.ACCESS_READ)  # with mmap, we will be able to use the file as a string
-        
+
 #        magic = self.mm[:8].rstrip(b'\0')
 #        version = self.mm[8:16].rstrip(b'\0')
 #        print(magic, version)
-        
+
         self._read_header(self.mm)
-        
+
         self.mm.close()
         self.filehandle.flush()
-        
+
         # open the file in C
         self.c_filehandle = lib.fdopen(os.dup(self.filehandle.fileno()), "rb".encode('ascii'))
         self.reset_rec_num()
-        
-        
+
+
     def __enter__(self):
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
-        
+
     def close(self):
         """
         Closes the file both in C and in Python.
@@ -145,7 +147,7 @@ class PTUfile():
             pass
         finally:
             self.filehandle.close()
-        
+
     def _ptu_read_tag(self, s, offset):
         """
         Private function which reads a tag from the file header.
@@ -272,7 +274,7 @@ class PTUmeasurement():
 
     """
     PTUmeasurement() analyses a PTUfile object to extract meaningful data like timetraces or g2 measurements.
-    
+
     Attributes:
         meas (PTUfile object): the PTUfile object, corresponding to a measurement file to analyse.
     """
@@ -280,17 +282,17 @@ class PTUmeasurement():
     def __init__(self, ptu_file):
         """
         Constructs a PTUmeasurement object which allows for analysis of a PTUfile object.
-        
+
         Args:
             ptu_file (PTUfile object): the PTUfile object to analyse. Should be open when analysing.
         """
         self.meas = ptu_file
-        
+
     def time_trace(self, resolution=1):
         """
         Returns the timetrace, a tuple where first item is a time vector 
         and second item is the vector of number of photons per resolution bin.
-        
+
         Parameters:
             resolution: the time resolution in seconds
 
@@ -304,29 +306,28 @@ class PTUmeasurement():
         c_time_vector = ffi.new("uint64_t[{}]".format(nb_of_bins))
         c_time_trace = ffi.new("int[{}]".format(nb_of_bins))
         c_rec_num_trace = ffi.new("uint64_t[{}]".format(nb_of_bins))
-        
-        lib.timetrace(self.meas.c_filehandle, 
-                      self.meas.rec_type[self.meas.record_type], 
-                      self.meas.end_header_offset, 
-                      self.meas.c_rec_num, 
-                      self.meas.num_records, 
-                      int(resolution), 
-                      c_time_vector, 
-                      c_time_trace, 
-                      c_rec_num_trace, 
+
+        lib.timetrace(self.meas.c_filehandle,
+                      self.meas.rec_type[self.meas.record_type],
+                      self.meas.end_header_offset,
+                      self.meas.c_rec_num,
+                      self.meas.num_records,
+                      int(resolution),
+                      c_time_vector,
+                      c_time_trace,
+                      c_rec_num_trace,
                       nb_of_bins)
-        
+
         time_vector = [element for element in c_time_vector]
         time_trace = [element for element in c_time_trace]
         rec_num_trace = [element for element in c_rec_num_trace]
-        
+
         return pl.array(time_vector), pl.array(time_trace), pl.array(rec_num_trace)
-       
-        
+
     def calculate_g2(self, correlation_window, resolution, post_selec_ranges=None, channel_start=0, channel_stop=1, fast=True):
         """
         Returns the g2 calculated from the file, given the start and stop channels and the record number range to analyse (which allows post-selection)
-        
+
         Args:
             correlation_window (int): correlation window length in number of global resolutions (typically picoseconds)
             resolution (int): length of one time bin in number of global resolutions (typically picoseconds)
@@ -338,7 +339,7 @@ class PTUmeasurement():
                 them chronologically along the file (start-stop -> start-stop -> etc.) and discarding other photons. This algorithm will produce an 
                 exponential decay artefact on long time scales or with high photon rates. In not fast mode (fast=False), the g2 is calculated 
                 considering all start-stop photon combinations, therefore not exhibiting any artefact.
-        
+
         Returns:
             2-tuple: numpy array vector of times (beginning of each time-bin), 
                      numpy array vector of histogram (number of start-stop photon couples per delay time bin)
@@ -347,51 +348,123 @@ class PTUmeasurement():
             calc_g2 = lib.calculate_g2_fast
         else:
             calc_g2 = lib.calculate_g2
-        
+
         nb_of_bins = int(pl.floor(float(correlation_window) / resolution))
         histogram = pl.zeros(nb_of_bins)
-        
+
         if post_selec_ranges is None:
             post_selec_ranges = [[0, self.meas.num_records]]
-            
+
         for post_selec_range in post_selec_ranges:
             if post_selec_range[1] > self.meas.num_records:
                 post_selec_range[1] = self.meas.num_records
-            
+
             print(post_selec_range)
-            
+
             c_time_vector = ffi.new("uint64_t[{}]".format(nb_of_bins+1))
             for i in range(nb_of_bins+1):
                 c_time_vector[i] = i * resolution
-                
+
             c_histogram = ffi.new("int[{}]".format(nb_of_bins))
             for i in range(nb_of_bins):
                 c_histogram[i] = 0
-                    
+
 #            print(nb_of_bins)
-            calc_g2( self.meas.c_filehandle, 
-                      self.meas.rec_type[self.meas.record_type], 
-                      self.meas.end_header_offset, 
-                      self.meas.c_rec_num, 
-                      self.meas.num_records, 
-                      post_selec_range[0], 
-                      post_selec_range[1], 
-                      c_time_vector, 
-                      c_histogram, 
-                      nb_of_bins, 
-                      channel_start, 
-                      channel_stop );
-            
+            calc_g2(self.meas.c_filehandle,
+                    self.meas.rec_type[self.meas.record_type],
+                    self.meas.end_header_offset,
+                    self.meas.c_rec_num,
+                    self.meas.num_records,
+                    post_selec_range[0],
+                    post_selec_range[1],
+                    c_time_vector,
+                    c_histogram,
+                    nb_of_bins,
+                    channel_start,
+                    channel_stop)
+
             for i in range(nb_of_bins):
                 histogram[i] += c_histogram[i]
-                
+
         time_vector = [time for time in c_time_vector]
-          
+
         return pl.array(time_vector[:-1]), pl.array(histogram)
-        
-    
-        
-    
+
+    def calculate_g2_ring(self, correlation_window, resolution,
+                          post_selec_ranges=None, channel_start=0,
+                          channel_stop=1, buffer_size=2**10):
+        """
+        Return g2 using ring buffer algorithm.
+
+        Calculated from the file, given the start and stop channels and the
+        record number range to analyse (which allows post-selection)
+
+        Args:
+            correlation_window (int): correlation window length in number of
+                global resolutions (typically picoseconds)
+            resolution (int): length of one time bin in number of global
+                resolutions (typically picoseconds)
+            post_selec_ranges (list, optional): 2 levels list (eg [[0,100]]).
+                Each element of the first level is a 2-element list with a
+                start record number and a stop record number. By default,
+                will take all the measurement (post_selec_ranges=None)
+            channel_start (int, optional): channel number of the start photons (default 0, sync)
+            channel_stop (int, optional): channel number of the stop photons (default 1)
+            fast (bool, optional): in fast mode (default, fast=True), the g2 is
+                calculated using subsequent pairs of start-stop photons reading
+                them chronologically along the file (start-stop -> start-stop -> etc.) and discarding other photons. This algorithm will produce an 
+                exponential decay artefact on long time scales or with high photon rates. In not fast mode (fast=False), the g2 is calculated 
+                considering all start-stop photon combinations, therefore not exhibiting any artefact.
+
+        Returns:
+            2-tuple: numpy array vector of times (beginning of each time-bin),
+                     numpy array vector of histogram (number of start-stop photon couples per delay time bin)
+        """
+        calc_g2 = lib.calculate_g2_ring
+
+        nb_of_bins = int(pl.floor(float(correlation_window) / resolution))
+        histogram = pl.zeros(nb_of_bins)
+
+        if post_selec_ranges is None:
+            post_selec_ranges = [[0, self.meas.num_records]]
+
+        for post_selec_range in post_selec_ranges:
+            if post_selec_range[1] > self.meas.num_records:
+                post_selec_range[1] = self.meas.num_records
+
+            print(post_selec_range)
+
+            c_time_vector = ffi.new("uint64_t[{}]".format(nb_of_bins + 1))
+            for i in range(nb_of_bins + 1):
+                c_time_vector[i] = i * resolution
+
+            c_histogram = ffi.new("int[{}]".format(nb_of_bins))
+            for i in range(nb_of_bins):
+                c_histogram[i] = 0
+
+#            print(nb_of_bins)
+            calc_g2(self.meas.c_filehandle,
+                    self.meas.rec_type[self.meas.record_type],
+                    self.meas.end_header_offset,
+                    self.meas.c_rec_num,
+                    self.meas.num_records,
+                    post_selec_range[0],
+                    post_selec_range[1],
+                    c_time_vector,
+                    c_histogram,
+                    nb_of_bins,
+                    channel_start,
+                    channel_stop,
+                    buffer_size)
+
+            for i in range(nb_of_bins):
+                histogram[i] += c_histogram[i]
+
+        time_vector = [time for time in c_time_vector]
+
+        return pl.array(time_vector[:-1]), pl.array(histogram)
+
+
 if __name__ == '__main__':
 
     timetrace_resolution = 1  # in seconds
@@ -401,30 +474,27 @@ if __name__ == '__main__':
     g2_post_selec_ranges = [[4e5,1e6]]  # in record numbers
 
     filename = r'C:\Users\QPL\Desktop\temp_measurements\default.ptu'
-    
-    
+
     # filename = r'/Users/raphaelproux/Desktop/TTTR/t2htr2a1loc2.ptu'
-    
+
     with PTUfile(filename) as ptu_file:
         ptu_file.print_header()
         ptu_meas = PTUmeasurement(ptu_file)
-       
+
         start_time = time.time()
         timetrace_x, timetrace_y, timetrace_recnum = ptu_meas.time_trace(resolution=timetrace_resolution)
         stop_time = time.time()
         print('timetrace calculation took', stop_time - start_time, 's')
-       
+
         pl.savetxt('timetrace.txt', pl.array([timetrace_x, timetrace_y, timetrace_recnum]).transpose(), delimiter='\t')
-       
-    
+
         start_time = time.time()
         histo_x, histo_y = ptu_meas.calculate_g2(1000000,10000, post_selec_ranges=[[0,100000000]])  #, fast=False)
         stop_time = time.time()
         print('g2 calculation took', stop_time - start_time, 's')
 
         pl.savetxt('timetrace.txt', pl.array([timetrace_x, timetrace_y, timetrace_recnum]).transpose(), delimiter='\t')
-        
-        
+
         pl.figure()
         pl.plot(timetrace_x, timetrace_y)
         pl.xlabel('Time (ps)')
@@ -441,5 +511,3 @@ if __name__ == '__main__':
         pl.ylabel('Coincidence counts/{} ps'.format(g2_resolution))
         pl.title('g2 measurement')
         pl.show()
-
-        
