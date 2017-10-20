@@ -22,7 +22,7 @@
 #define rtTimeHarp260PT2 0x00010206    // (SubID = $00 ,RecFmt: $01) (V1), T-Mode: $02 (T2), HW: $06 (TimeHarp260P)
 
 // How big the file chunking will be
-#define RECORD_CHUNK = 512;
+#define RECORD_CHUNK 512
 
 // ================================================
 // Buffer for keeping track of records
@@ -68,7 +68,7 @@ int c_fseek(FILE *filehandle, long int offset)
     return fseek(filehandle, offset, SEEK_SET);
 }
 
-void ProcessPHT2(FILE* filehandle, photon_buf_t *buffer,  uint64_t *oflcorrection,)
+void ProcessPHT2(FILE* filehandle, photon_buf_t *buffer,  uint64_t *oflcorrection)
 {
     /*
      ProcessPHT2() reads the next records of a file until it finds a photon, and then returns.
@@ -129,7 +129,7 @@ void ProcessPHT2(FILE* filehandle, photon_buf_t *buffer,  uint64_t *oflcorrectio
     }
 }
 
-void ProcessHHT2(FILE* filehandle, int HHVersion, photon_buf_t *buffer,  uint64_t *oflcorrection,)
+void ProcessHHT2(FILE* filehandle, int HHVersion, photon_buf_t *buffer,  uint64_t *oflcorrection)
 {
     /*
      ProcessHHT2() reads the next records of a file until it finds a photon, and then returns.
@@ -202,8 +202,9 @@ void ProcessHHT2(FILE* filehandle, int HHVersion, photon_buf_t *buffer,  uint64_
         else //regular input channel
         {
             photon_buf_push(buffer,
-                            *oflcorrection + Record.bits.time,
-                            Record.bits.channel);
+                            *oflcorrection + T2Rec.bits.timetag,
+                            T2Rec.bits.channel + 1);
+        }
     }
 }
 
@@ -277,7 +278,7 @@ int next_photon(FILE* filehandle, long long record_type, uint64_t *RecNum, uint6
             
             switch (record_type) {
                 case rtPicoHarpT2:
-                    ProcessPHT2(filehandle, buffer);
+                    ProcessPHT2(filehandle, buffer, oflcorrection);
                     break;
                 case rtPicoHarpT3:
                     //ProcessPHT3(TTTRRecord);
@@ -361,7 +362,7 @@ void timetrace(FILE* filehandle, long long record_type, int end_of_header, uint6
             add_photon_to_next_bin = 0;
             while(*RecNum < NumRecords) // this has to be change now we are looping as long as we get photons from next_photon
             {
-                next_photon(filehandle, record_type, RecNum, NumRecords, &photon_buffer, &oflcorrection, &timetag, &channel));
+                next_photon(filehandle, record_type, RecNum, NumRecords, &photon_buffer, &oflcorrection, &timetag, &channel);
                 // if this photon is in the current bin
                 if(timetag < end_of_bin)
                 {

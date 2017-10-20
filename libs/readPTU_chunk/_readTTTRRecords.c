@@ -502,134 +502,54 @@ static void (*_cffi_call_python_org)(struct _cffi_externpy_s *, char *);
 #define rtTimeHarp260PT3 0x00010306    // (SubID = $00 ,RecFmt: $01) (V1), T-Mode: $02 (T3), HW: $06 (TimeHarp260P)
 #define rtTimeHarp260PT2 0x00010206    // (SubID = $00 ,RecFmt: $01) (V1), T-Mode: $02 (T2), HW: $06 (TimeHarp260P)
 
-// ====================================================================
-// CIRCULAR BUFFER Structure for use with the g2 algorithm based on it
-// ====================================================================
+// How big the file chunking will be
+#define RECORD_CHUNK 512
+
+// ================================================
+// Buffer for keeping track of records
+// ================================================
 typedef struct {
-    uint64_t *buffer;
-    size_t head;
-    size_t count;
-    size_t size; //of the buffer
-} circular_buf_t;
+    uint64_t timetag;
+    int channel;
+} photon;
 
+typedef struct {
+    // photon photons[RECORD_CHUNK]; // using this will improve memory locality
+    uint64_t timetag[RECORD_CHUNK];
+    int channel[RECORD_CHUNK];
+    size_t head;  // to keep track of what was the last read record in buffer
+    size_t count; // if don't have enough photons, for example due to many records being oflcorrection flags
+} photon_buf_t;
 
-int circular_buf_reset(circular_buf_t * cbuf);
-int circular_buf_put(circular_buf_t * cbuf, uint64_t data);
-int circular_buf_oldest(circular_buf_t * cbuf, uint64_t * data);
-
-
-int circular_buf_reset(circular_buf_t * cbuf)
-{
-    int r = -1;
-    
-    if(cbuf)
-    {
-        cbuf->head = 0;
-        cbuf->count = 0;
-        r = 0;
-    }
-    
-    return r;
+void photon_buf_reset(photon_buf_t *buffer) {
+    buffer->head = 0;
+    buffer->count = 0;
 }
 
-int circular_buf_put(circular_buf_t * cbuf, uint64_t data)
-{
-    int r = -1;
-    
-    if(cbuf)
-    {
-        cbuf->buffer[cbuf->head] = data;
-        cbuf->head = (cbuf->head + 1) % cbuf->size;
-        if(cbuf->count < cbuf->size) {
-            cbuf->count = cbuf->count + 1;
-        }
-        
-        r = 0;
-    }
-    
-    return r;
+void photon_buf_pop(photon_buf_t *buffer, uint64_t *timetag, int *channel) {
+    size_t head = buffer->head;
+//    *oflcorrection = buffer->oflcorrection[head];
+    *timetag = buffer->timetag[head];
+    *channel = buffer->channel[head];
+    buffer->head = head + 1;
 }
 
-int circular_buf_oldest(circular_buf_t * cbuf, uint64_t * data) {
-    int r = -1;
-    
-    // CAUTION: Even if the buffer is empty oldest will return whatever
-    // is in buffer[0]. We do so because it is conveninet for our specific
-    // application but it can be catastrophic.
-    // TAKE HOME MESSAGE: Don't use this implementation as is for anything
-    // other than computing g2.
-    if(cbuf && data) {
-        if(cbuf->count < cbuf->size) {
-            *data = cbuf->buffer[0];
-        } else {
-            *data = cbuf->buffer[cbuf->head];
-        }
-        
-        r = 0;
-    }
-    
-    return r;
+void photon_buf_push(photon_buf_t *buffer, uint64_t timetag, int channel) {
+    size_t count = buffer->count;
+    buffer->timetag[count] = timetag;
+    buffer->channel[count] = channel;
+    buffer->count = count + 1;
 }
-
-// ============================
-// END OF CIRCULAR BUFFER
-// ============================
-
-// this 'node' structure is a chained list to be used with the buffers. It is easy to add an item at the end and read+remove an item at the beginning (see the three functions below).
-typedef struct node {
-    uint64_t val;
-    struct node * next;
-} node_t;
-
-void head_init(node_t** head, int* length) {
-    // initialize a chained list with value 0 and length 0.
-    *head = malloc(sizeof(node_t));
-    (*head)->val = 0;
-    (*head)->next = NULL;
-    *length = 0;
-}
-
-void push(node_t * head, uint64_t val, int* length) {
-    // add an item at the end of the list
-    node_t * current = head;
-    while (current->next != NULL) {
-        current = current->next;
-    }
-    
-    // now we can add a new variable
-    current->next = malloc(sizeof(node_t));
-    current->next->val = val;
-    current->next->next = NULL;
-    *length = *length + 1;
-}
-
-uint64_t pop(node_t * head, int* length) {
-    // remove the first info item (second in the list) from the list, returning its value
-    // remember that, for simplicity, we keep the very first item of the list alive so we don't need to recreate one each time the list becomes empty.
-    uint64_t retval = 0;
-    node_t * next_node = NULL;
-    
-    if (head->next == NULL) {
-        return 0;
-    }
-    
-    next_node = head->next->next;
-    retval = head->next->val;
-    free(head->next);
-    head->next = next_node;
-    *length = *length - 1;
-    
-    return retval;
-}
-
+// ================================================
+// END Buffer for keeping track of records
+// ================================================
 
 int c_fseek(FILE *filehandle, long int offset)
 {
     return fseek(filehandle, offset, SEEK_SET);
 }
 
-
-void ProcessPHT2(FILE* filehandle, uint64_t *oflcorrection, uint64_t *timetag, int *channel)
+void ProcessPHT2(FILE* filehandle, photon_buf_t *buffer,  uint64_t *oflcorrection)
 {
     /*
      ProcessPHT2() reads the next records of a file until it finds a photon, and then returns.
@@ -658,46 +578,39 @@ void ProcessPHT2(FILE* filehandle, uint64_t *oflcorrection, uint64_t *timetag, i
         
     } Record;
     unsigned int markers;
-    uint32_t TTTRRecord = 0;
+    uint32_t TTTRRecord[RECORD_CHUNK];
     
-    fread(&TTTRRecord, 1, sizeof(TTTRRecord) ,filehandle);
-    Record.allbits = TTTRRecord;
+    fread(&TTTRRecord, RECORD_CHUNK, sizeof(TTTRRecord) ,filehandle);
+    for(size_t i = 0; i < RECORD_CHUNK; i++) {
+        Record.allbits = TTTRRecord[i];
     
-    if(Record.bits.channel == 0xF) //this means we have a special record
-    {
-        //in a special record the lower 4 bits of time are marker bits
-        markers = Record.bits.time & 0xF;
-        if(markers == 0) //this means we have an overflow record
+        if(Record.bits.channel == 0xF) //this means we have a special record
         {
-            *oflcorrection += T2WRAPAROUND; // unwrap the time tag overflow
-            *channel = -1;
-        }
-        else //a marker
-        {
-            //Strictly, in case of a marker, the lower 4 bits of time are invalid
-            //because they carry the marker bits. So one could zero them out.
-            //However, the marker resolution is only a few tens of nanoseconds anyway,
-            //so we can just ignore the few picoseconds of error.
-            *timetag = *oflcorrection + Record.bits.time;
-            *channel = -2;
-        }
-    }
-    else
-    {
-        if((int)Record.bits.channel > 4) //Should not occur
-        {
-            *timetag = 0;
-            *channel = -3;
+            //in a special record the lower 4 bits of time are marker bits
+            markers = Record.bits.time & 0xF;
+            if(markers == 0) //this means we have an overflow record
+            {
+                *oflcorrection += T2WRAPAROUND; // unwrap the time tag overflow
+            }
         }
         else
         {
-            *timetag = *oflcorrection + Record.bits.time;
-            *channel = Record.bits.channel;
+            if((int)Record.bits.channel > 4) //Should not occur
+            {
+//                buffer->timetag[i] = 0;                                                   ///
+//                buffer->channel[i] = -3;                                                  ///
+            }
+            else
+            {
+                photon_buf_push(buffer,
+                                *oflcorrection + Record.bits.time,
+                                Record.bits.channel);
+            }
         }
     }
 }
 
-void ProcessHHT2(FILE* filehandle, int HHVersion, uint64_t *oflcorrection, uint64_t *timetag, int *channel)
+void ProcessHHT2(FILE* filehandle, int HHVersion, photon_buf_t *buffer,  uint64_t *oflcorrection)
 {
     /*
      ProcessHHT2() reads the next records of a file until it finds a photon, and then returns.
@@ -723,60 +636,57 @@ void ProcessHHT2(FILE* filehandle, int HHVersion, uint64_t *oflcorrection, uint6
             unsigned special  :1; // or sync, if channel==0
         } bits;
     } T2Rec;
-    uint32_t TTTRRecord = 0;
+    uint32_t TTTRRecord[RECORD_CHUNK];
     
     
-    fread(&TTTRRecord, 1, sizeof(TTTRRecord) ,filehandle);
+    fread(&TTTRRecord, RECORD_CHUNK, sizeof(TTTRRecord) ,filehandle);
     
-    T2Rec.allbits = TTTRRecord;
+    for(size_t i = 0; i < RECORD_CHUNK; i++) {
+        T2Rec.allbits = TTTRRecord[i];
     
-    if(T2Rec.bits.special==1)
-    {
-        if(T2Rec.bits.channel==0x3F) //an overflow record
+        if(T2Rec.bits.special==1)
         {
-            if(HHVersion == 1)
+            if(T2Rec.bits.channel==0x3F) //an overflow record
             {
-                *oflcorrection += T2WRAPAROUND_V1;
-                *timetag = 0;
-                *channel = -1;
-            }
-            else
-            {
-                //number of overflows is stored in timetag
-                if(T2Rec.bits.timetag==0) //if it is zero it is an old style single overflow
+                if(HHVersion == 1)
                 {
-                    *oflcorrection += T2WRAPAROUND_V2;  //should never happen with new Firmware!
+                    *oflcorrection += T2WRAPAROUND_V1;
                 }
                 else
                 {
-                    *oflcorrection += T2WRAPAROUND_V2 * T2Rec.bits.timetag;
+                    //number of overflows is stored in timetag
+                    if(T2Rec.bits.timetag==0) //if it is zero it is an old style single overflow
+                    {
+                        *oflcorrection += T2WRAPAROUND_V2;  //should never happen with new Firmware! ///
+                    }
+                    else
+                    {
+                        *oflcorrection += T2WRAPAROUND_V2 * T2Rec.bits.timetag; ///
+                    }
                 }
             }
             
-            *timetag = 0;
-            *channel = -1;
+            if((T2Rec.bits.channel>=1)&&(T2Rec.bits.channel<=15)) //markers
+            {
+//                buffer->timetag[i] = *oflcorrection + T2Rec.bits.timetag;  ///
+                //Note that actual marker tagging accuracy is only some ns.
+//                buffer->channel[i] = -2;   ///
+                // *channel = T2Rec.bits.channel;
+            }
+            
+            else if(T2Rec.bits.channel==0) //sync
+            {
+//                buffer->timetag[i] = *oflcorrection + T2Rec.bits.timetag;  ///
+//                buffer->channel[i] = T2Rec.bits.channel;        ///
+            }
         }
-        
-        if((T2Rec.bits.channel>=1)&&(T2Rec.bits.channel<=15)) //markers
+        else //regular input channel
         {
-            *timetag = *oflcorrection + T2Rec.bits.timetag;
-            //Note that actual marker tagging accuracy is only some ns.
-            *channel = -2;
-            // *channel = T2Rec.bits.channel;
-        }
-        
-        else if(T2Rec.bits.channel==0) //sync
-        {
-            *timetag = *oflcorrection + T2Rec.bits.timetag;
-            *channel = T2Rec.bits.channel;
+            photon_buf_push(buffer,
+                            *oflcorrection + T2Rec.bits.timetag,
+                            T2Rec.bits.channel + 1);
         }
     }
-    else //regular input channel
-    {
-        *timetag = *oflcorrection + T2Rec.bits.timetag;
-        *channel = T2Rec.bits.channel + 1;
-    }
-    //    printf("%d %llu\n", *channel, *timetag);
 }
 
 
@@ -812,7 +722,7 @@ void RecordHHT2(FILE* filehandle)
 }
 
 
-int next_photon(FILE* filehandle, long long record_type, uint64_t *RecNum, uint64_t NumRecords, uint64_t *oflcorrection, uint64_t *timetag, int *channel)
+int next_photon(FILE* filehandle, long long record_type, uint64_t *RecNum, uint64_t NumRecords, photon_buf_t *buffer, uint64_t *oflcorrection, uint64_t *timetag, int *channel)
 {
     /*
      next_photon() reads the next records of a file until it finds a photon, and then returns.
@@ -834,51 +744,58 @@ int next_photon(FILE* filehandle, long long record_type, uint64_t *RecNum, uint6
      1 when found a photon,
      0 when reached end of file.
      */
-    do {
-        if(*RecNum < NumRecords) {
+    
+    // We will sacrifice up to 512 records at the end of the file in order to simplify the logic of the function.
+    
+    if (buffer->head < buffer->count) {
+        // pop a photon
+        photon_buf_pop(buffer, timetag, channel);
+        return 1;
+    } else {
+        // we need to replenish the photon pool
+        photon_buf_reset(buffer);
+        while (buffer->count <= 0 && (*RecNum+RECORD_CHUNK) < NumRecords) {
+            *RecNum = *RecNum + RECORD_CHUNK;
+            
             switch (record_type) {
                 case rtPicoHarpT2:
-                    ProcessPHT2(filehandle, oflcorrection, timetag, channel);
-                    *RecNum = *RecNum + 1;
+                    ProcessPHT2(filehandle, buffer, oflcorrection);
                     break;
                 case rtPicoHarpT3:
                     //ProcessPHT3(TTTRRecord);
-                    //*RecNum = *RecNum + 1;
                     break;
                 case rtHydraHarpT2:
-                    ProcessHHT2(filehandle, 1, oflcorrection, timetag, channel);
+                    ProcessHHT2(filehandle, 1, buffer, oflcorrection);
                     *RecNum = *RecNum + 1;
                     break;
                 case rtHydraHarpT3:
                     //ProcessHHT3(TTTRRecord, 1);
-                    //*RecNum = *RecNum + 1;
                     break;
                 case rtHydraHarp2T2:
                 case rtTimeHarp260NT2:
                 case rtTimeHarp260PT2:
-                    ProcessHHT2(filehandle, 2, oflcorrection, timetag, channel);
-                    *RecNum = *RecNum + 1;
+                    ProcessHHT2(filehandle, 2, buffer, oflcorrection);
                     break;
                 case rtHydraHarp2T3:
                 case rtTimeHarp260NT3:
                 case rtTimeHarp260PT3:
                     //ProcessHHT3(TTTRRecord, 2);
-                    //*RecNum = *RecNum + 1;
                     break;
                 default:
-                    break;
+                    return 0;
             }
+            
+        };
+        
+        // Check if the last while loop added some photons and pop if possible
+        if (buffer->count > 0) {
+            photon_buf_pop(buffer, timetag, channel);
+            return 1;
+        } else {
+            return 0;
         }
-        else {
-            break;
-        }
-    } while (*channel < 0); // while not a photon
-    if (*RecNum >= NumRecords) {
-        return 0;  // reached end of records (end of file)
     }
-    else {
-        return 1;  // found a photon
-    }
+    
 }
 
 void timetrace(FILE* filehandle, long long record_type, int end_of_header, uint64_t *RecNum, uint64_t NumRecords, uint64_t time_bin_length, uint64_t *time_vector, int *time_trace, uint64_t *RecNum_trace, int nb_of_bins)
@@ -902,6 +819,9 @@ void timetrace(FILE* filehandle, long long record_type, int end_of_header, uint6
      time_trace         calculated timetrace
      */
     // IMPORTANT NOTE: every time in picoseconds
+    photon_buf_t photon_buffer;
+    photon_buf_reset(&photon_buffer);
+    
     uint64_t oflcorrection = 0;
     uint64_t timetag = 0;
     int channel = -1;
@@ -921,9 +841,9 @@ void timetrace(FILE* filehandle, long long record_type, int end_of_header, uint6
             // if we are starting (still didn't read a photon), add_photon_to_next_bin == 0, otherwise, == 1
             time_trace[i] = add_photon_to_next_bin;
             add_photon_to_next_bin = 0;
-            while(*RecNum < NumRecords)
+            while(*RecNum < NumRecords) // this has to be change now we are looping as long as we get photons from next_photon
             {
-                next_photon(filehandle, record_type, RecNum, NumRecords, &oflcorrection, &timetag, &channel);
+                next_photon(filehandle, record_type, RecNum, NumRecords, &photon_buffer, &oflcorrection, &timetag, &channel);
                 // if this photon is in the current bin
                 if(timetag < end_of_bin)
                 {
@@ -948,314 +868,22 @@ void timetrace(FILE* filehandle, long long record_type, int end_of_header, uint6
     }
 }
 
-void calculate_g2_ring(FILE* filehandle, long long record_type, int end_of_header,
-                       uint64_t *RecNum, uint64_t NumRecords, uint64_t RecNum_start,
-                       uint64_t RecNum_stop, uint64_t *time_vector, int *histogram,
-                       int nb_of_bins, int channel_start, int channel_stop,
-                       int buffer_size)
-{
-    /*
-     calculate_g2() computes the g2 directly reading the measurement file. It uses a more complex algorithm than calculate_g2_fast(). This function will keep all photons in memory buffers, such that each start photon will be measured in regard of all the stop photons detected in a correlation window around it. This way, the measurement does not stop at the first stop photon but will take into account longer time scales. It is therefore safer to use with high photon count rates.
-     Inputs:
-     filehandle         FILE pointer with an open record file to read the photons
-     record_type        record type which depends on the device which recorded the file (see constants at the beginning of file)
-     end_of_header      offset in bytes to the beginning of the record section in the file
-     RecNum             pointer to the index of the record being read
-     NumRecords         total number of records
-     RecNum_start       start of the section of records to analyse for the g2 (in terms of record index)
-     RecNum_stop        stop of the section of records to analyse for the g2
-     time_vector        precalculated array of times used for the x-axis of the g2 histogram. Should have nb_of_bins + 1 elements.
-     histogram          preallocated array of zeros used for the g2 histogram. Should have nb_of_bins elements.
-     nb_of_bins         number of bins for the histogram (should correspond to the length of the histogram array)
-     channel_start      channel number used for start photons (sync will generally be 0)
-     channel_stop       channel number used for stop photons (> 0, often 1)
-     buffer_size        Size of the ring buffer
-     Outputs:
-     filehandle         FILE pointer with reader at the position of last analysed record
-     RecNum             index of last analysed record
-     histogram          calculated g2 histogram
-     */
-    
-    uint64_t oflcorrection = 0;
-    uint64_t timetag = 0;
-    uint64_t oldest_timetag;
-    int channel = -1;
-    
-    int i;  // loop indexing
-    int idx;  // index for histogram
-    
-    uint64_t delta;
-    uint64_t new_correlation_window;
-    uint64_t min_correlation_window = 18e18;  // almost 2^64
-    uint64_t max_correlation_window = time_vector[nb_of_bins];
-    
-    // reset file reader and go to the start position RecNum_start
-    c_fseek(filehandle, end_of_header + 4 * RecNum_start);
-    *RecNum = RecNum_start;
-    
-    // Prepare the circular buffer for the start photons
-    circular_buf_t cbuf;
-    cbuf.size = buffer_size;
-    circular_buf_reset(&cbuf);
-    cbuf.buffer = calloc(cbuf.size, sizeof(uint64_t)); // set memory to zero so we have a proper
-    // starting time.
-    
-    // Read all the photons
-    while(*RecNum < RecNum_stop && *RecNum < NumRecords){
-        next_photon(filehandle, record_type, RecNum, NumRecords,
-                    &oflcorrection, &timetag, &channel);
-        
-        if (channel == channel_start) {
-            circular_buf_put(&cbuf, i);
-            circular_buf_oldest(&cbuf, &oldest_timetag);
-            new_correlation_window = timetag - oldest_timetag;
-            
-            if (new_correlation_window < min_correlation_window) {
-                min_correlation_window = new_correlation_window;
-            }
-        }
-        
-        if (channel == channel_stop) {
-            for(i = 0; i < cbuf.count; i++) {
-                delta = timetag - cbuf.buffer[i];
-                if (delta < max_correlation_window) {
-                    idx = (int)(delta * nb_of_bins / max_correlation_window);
-                    histogram[i] = histogram[i] + 1;
-                }
-            }
-        }
-    }
-}
-
-void calculate_g2(FILE* filehandle, long long record_type, int end_of_header, uint64_t *RecNum, uint64_t NumRecords, uint64_t RecNum_start, uint64_t RecNum_stop, uint64_t *time_vector, int *histogram, int nb_of_bins, int channel_start, int channel_stop)
-{
-    /*
-     calculate_g2() computes the g2 directly reading the measurement file. It uses a more complex algorithm than calculate_g2_fast(). This function will keep all photons in memory buffers, such that each start photon will be measured in regard of all the stop photons detected in a correlation window around it. This way, the measurement does not stop at the first stop photon but will take into account longer time scales. It is therefore safer to use with high photon count rates.
-     Inputs:
-     filehandle         FILE pointer with an open record file to read the photons
-     record_type        record type which depends on the device which recorded the file (see constants at the beginning of file)
-     end_of_header      offset in bytes to the beginning of the record section in the file
-     RecNum             pointer to the index of the record being read
-     NumRecords         total number of records
-     RecNum_start       start of the section of records to analyse for the g2 (in terms of record index)
-     RecNum_stop        stop of the section of records to analyse for the g2
-     time_vector        precalculated array of times used for the x-axis of the g2 histogram. Should have nb_of_bins + 1 elements.
-     histogram          preallocated array of zeros used for the g2 histogram. Should have nb_of_bins elements.
-     nb_of_bins         number of bins for the histogram (should correspond to the length of the histogram array)
-     channel_start      channel number used for start photons (sync will generally be 0)
-     channel_stop       channel number used for stop photons (> 0, often 1)
-     Outputs:
-     filehandle         FILE pointer with reader at the position of last analysed record
-     RecNum             index of last analysed record
-     histogram          calculated g2 histogram
-     */
-    
-    node_t* start_buff_head = NULL;
-    node_t* stop_buff_head = NULL;
-    int start_buff_length = 0;
-    int stop_buff_length = 0;
-    node_t* stop_corr_buff_head = NULL;
-    int stop_corr_buff_length = 0;
-    node_t* current = NULL;
-    uint64_t correlation_window_end = 0;
-    uint64_t start_time = 0;
-    uint64_t oflcorrection = 0;
-    uint64_t timetag = 0;
-    int channel = -1;
-    int i = 0;
-    uint64_t correlation_window = 0;
-    //    long next_print = 0;
-    correlation_window = time_vector[nb_of_bins];
-    
-    // First item in the chained lists will be kept as anchor and only the 'next' items will contain timetags.
-    // This avoids emptying totally the list and having to recreate it when starting to fill it again.
-    head_init(&start_buff_head, &start_buff_length);
-    head_init(&stop_buff_head, &stop_buff_length);
-    head_init(&stop_corr_buff_head, &stop_corr_buff_length);
-    
-    /*
-     This algorithm implies using 3 buffers:
-     start_buff_head      : the start photons buffer, where all unused start photons go (to be used later)
-     stop_buff_head       : the stop photons buffer, where all unused stop photons go (to be used later)
-     stop_corr_buff_head  : the correlation stop photons buffer. This buffer contains all the stop photons which fit in a correlation window around the selected start photon. For each new start photon, it needs to be modified removing the old photons which do not fit anymore in the correlation window and adding the new ones which now fit in the correlation window.
-     
-     Note that this algorithm supposes the list of photons to be ordered chronologically.
-     */
-    
-    // reset file reader and go to the start position RecNum_start
-    c_fseek(filehandle, end_of_header + 4 * RecNum_start);
-    *RecNum = RecNum_start;
-    
-    // while there are still unread photons in the file or unused start photons in the buffer
-    while((*RecNum < RecNum_stop && *RecNum < NumRecords) || start_buff_length > 0){
-        //        if (*RecNum > next_print){
-        //            printf("%ld/%ld\n", *RecNum, RecNum_stop);
-        //            next_print = next_print + 1000000;
-        //        }
-        
-        // FIND NEXT START PHOTON
-        // first, take first start photon in buffer
-        if(start_buff_length > 0){
-            start_time = pop(start_buff_head, &start_buff_length);
-        }
-        // if start buffer is empty, read photons until a start photon is found, and feed stop buffer in the process
-        else {
-            channel = -1;
-            while(channel != channel_start && (*RecNum < RecNum_stop && *RecNum < NumRecords)){
-                next_photon(filehandle, record_type, RecNum, NumRecords, &oflcorrection, &timetag, &channel);
-                if (channel == channel_stop){ // store in stop photons buffer
-                    push(stop_buff_head, timetag, &stop_buff_length);
-                }
-                else { // channel 0
-                    start_time = timetag;
-                }
-            }
-            if (channel != channel_start && (*RecNum >= RecNum_stop || *RecNum >= NumRecords)) {
-                break;
-            }
-        }
-        correlation_window_end = start_time + correlation_window;
-        
-        // FIND ALL STOP PHOTONS IN CORRELATION WINDOW
-        // complete stop photons array with new stop photons from buffer fitting in correlation window
-        while(stop_buff_length > 0 && stop_buff_head->next->val < correlation_window_end) {
-            push(stop_corr_buff_head, pop(stop_buff_head, &stop_buff_length), &stop_corr_buff_length);
-        }
-        
-        // if stop buffer is empty, read photons until the time gets out of the correlation window, and feed start buffer and the stop photons array in the process
-        if (stop_buff_length == 0) {
-            while (timetag < correlation_window_end && (*RecNum < RecNum_stop && *RecNum < NumRecords)) {
-                next_photon(filehandle, record_type, RecNum, NumRecords, &oflcorrection, &timetag, &channel);
-                // start photon -> store in start photon buffer (to be used later)
-                if (channel == channel_start) {
-                    push(start_buff_head, timetag, &start_buff_length);
-                }
-                // stop photon
-                else {
-                    // qualifies in correlation window -> store in correlation window stop buffer
-                    if (timetag < correlation_window_end) {
-                        push(stop_corr_buff_head, timetag, &stop_corr_buff_length);
-                    }
-                    // doesn't qualify -> store in stop photon buffer (to be used later)
-                    else {
-                        push(stop_buff_head, timetag, &stop_buff_length);
-                    }
-                }
-            }
-        }
-        // remove stop photons which are out of the correlation window (pop)
-        for(i = 0; i < stop_corr_buff_length; i++) {
-            if(stop_corr_buff_head->next->val < start_time) {
-                pop(stop_corr_buff_head, &stop_corr_buff_length);
-            }
-            else {
-                break;
-            }
-        }
-        // perform a histogram of the stop times - start time and add it to the main histogram result
-        current = stop_corr_buff_head->next;
-        while(current != NULL) {
-            if (current->val - start_time < correlation_window) {
-                i = (int) (current->val - start_time) * nb_of_bins / correlation_window;
-                histogram[i] = histogram[i] + 1;
-            }
-            current = current->next;
-        }
-    }
-}
-
-void calculate_g2_fast(FILE* filehandle, long long record_type, int end_of_header, uint64_t *RecNum, uint64_t NumRecords, uint64_t RecNum_start, uint64_t RecNum_stop, uint64_t *time_vector, int *histogram, int nb_of_bins, int channel_start, int channel_stop)
-{
-    /*
-     calculate_g2_fast() computes the g2 directly reading the measurement file. It uses a simple algorithm which stops at the first stop photon (histogram mode style). This algorithm is fast but loses some information and can exhibit an exponential decay artefact linked to the photon rates.
-     Inputs:
-     filehandle         FILE pointer with an open record file to read the photons
-     record_type        record type which depends on the device which recorded the file (see constants at the beginning of file)
-     end_of_header      offset in bytes to the beginning of the record section in the file
-     RecNum             pointer to the index of the record being read
-     NumRecords         total number of records
-     RecNum_start       start of the section of records to analyse for the g2 (in terms of record index)
-     RecNum_stop        stop of the section of records to analyse for the g2
-     time_vector        precalculated array of times used for the x-axis of the g2 histogram. Should have nb_of_bins + 1 elements.
-     histogram          preallocated array of zeros used for the g2 histogram. Should have nb_of_bins elements.
-     nb_of_bins         number of bins for the histogram (should correspond to the length of the histogram array)
-     channel_start      channel number used for start photons (sync will generally be 0)
-     channel_stop       channel number used for stop photons (> 0, often 1)
-     Outputs:
-     filehandle         FILE pointer with reader at the position of last analysed record
-     RecNum             index of last analysed record
-     histogram          calculated g2 histogram
-     */
-    
-    uint64_t start_time = 0;
-    uint64_t stop_time = 0;
-    uint64_t oflcorrection = 0;
-    uint64_t timetag = 0;
-    int channel = -1;
-    int i = 0;
-    uint64_t correlation_window = 0;
-    //    long next_print = 0;
-    correlation_window = time_vector[nb_of_bins];
-    
-    // reset file reader and go to the start position RecNum_start
-    c_fseek(filehandle, end_of_header + 4 * RecNum_start);
-    *RecNum = RecNum_start;
-    
-    // go to the start position RecNum_start
-    while(*RecNum < RecNum_stop && *RecNum < NumRecords){
-        //        if (*RecNum > next_print){
-        //            printf("%ld/%ld\n", *RecNum, RecNum_stop);
-        //            next_print = next_print + 1000000;
-        //        }
-        
-        // FIND NEXT START PHOTON
-        channel = -1;
-        while((*RecNum < RecNum_stop && *RecNum < NumRecords) && channel != channel_start){
-            next_photon(filehandle, record_type, RecNum, NumRecords, &oflcorrection, &timetag, &channel);
-        }
-        if (*RecNum >= RecNum_stop || *RecNum >= NumRecords){
-            break;
-        }
-        // found a start photon
-        else {
-            start_time = timetag;
-        }
-        
-        // FIND NEXT STOP PHOTON
-        while ((*RecNum < RecNum_stop && *RecNum < NumRecords) && channel != channel_stop) {
-            next_photon(filehandle, record_type, RecNum, NumRecords, &oflcorrection, &timetag, &channel);
-        }
-        // found a stop photon
-        if (channel == channel_stop) {
-            stop_time = timetag;
-        }
-        
-        // ADD DELAY TO HISTOGRAM
-        // add occurence to result histogram if the delay is in the correlation window
-        if (stop_time - start_time < correlation_window) {
-            i = (int) (stop_time - start_time) * nb_of_bins / correlation_window;
-            histogram[i] = histogram[i] + 1;
-        }
-    }
-}
-
-
 
 /************************************************************/
 
 static void *_cffi_types[] = {
 /*  0 */ _CFFI_OP(_CFFI_OP_FUNCTION, 5), // FILE *()(int, char const *)
 /*  1 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7), // int
-/*  2 */ _CFFI_OP(_CFFI_OP_POINTER, 53), // char const *
+/*  2 */ _CFFI_OP(_CFFI_OP_POINTER, 24), // char const *
 /*  3 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
 /*  4 */ _CFFI_OP(_CFFI_OP_FUNCTION, 1), // int()(FILE *)
-/*  5 */ _CFFI_OP(_CFFI_OP_POINTER, 52), // FILE *
+/*  5 */ _CFFI_OP(_CFFI_OP_POINTER, 23), // FILE *
 /*  6 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
 /*  7 */ _CFFI_OP(_CFFI_OP_FUNCTION, 1), // int()(FILE *, long)
 /*  8 */ _CFFI_OP(_CFFI_OP_NOOP, 5),
 /*  9 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 9), // long
 /* 10 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/* 11 */ _CFFI_OP(_CFFI_OP_FUNCTION, 54), // void()(FILE *, long long, int, uint64_t *, uint64_t, uint64_t, uint64_t *, int *, uint64_t *, int)
+/* 11 */ _CFFI_OP(_CFFI_OP_FUNCTION, 25), // void()(FILE *, long long, int, uint64_t *, uint64_t, uint64_t, uint64_t *, int *, uint64_t *, int)
 /* 12 */ _CFFI_OP(_CFFI_OP_NOOP, 5),
 /* 13 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 11), // long long
 /* 14 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
@@ -1267,38 +895,9 @@ static void *_cffi_types[] = {
 /* 20 */ _CFFI_OP(_CFFI_OP_NOOP, 15),
 /* 21 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
 /* 22 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/* 23 */ _CFFI_OP(_CFFI_OP_FUNCTION, 54), // void()(FILE *, long long, int, uint64_t *, uint64_t, uint64_t, uint64_t, uint64_t *, int *, int, int, int)
-/* 24 */ _CFFI_OP(_CFFI_OP_NOOP, 5),
-/* 25 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 11),
-/* 26 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
-/* 27 */ _CFFI_OP(_CFFI_OP_NOOP, 15),
-/* 28 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 24),
-/* 29 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 24),
-/* 30 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 24),
-/* 31 */ _CFFI_OP(_CFFI_OP_NOOP, 15),
-/* 32 */ _CFFI_OP(_CFFI_OP_NOOP, 19),
-/* 33 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
-/* 34 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
-/* 35 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
-/* 36 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/* 37 */ _CFFI_OP(_CFFI_OP_FUNCTION, 54), // void()(FILE *, long long, int, uint64_t *, uint64_t, uint64_t, uint64_t, uint64_t *, int *, int, int, int, int)
-/* 38 */ _CFFI_OP(_CFFI_OP_NOOP, 5),
-/* 39 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 11),
-/* 40 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
-/* 41 */ _CFFI_OP(_CFFI_OP_NOOP, 15),
-/* 42 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 24),
-/* 43 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 24),
-/* 44 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 24),
-/* 45 */ _CFFI_OP(_CFFI_OP_NOOP, 15),
-/* 46 */ _CFFI_OP(_CFFI_OP_NOOP, 19),
-/* 47 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
-/* 48 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
-/* 49 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
-/* 50 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
-/* 51 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/* 52 */ _CFFI_OP(_CFFI_OP_STRUCT_UNION, 0), // FILE
-/* 53 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 2), // char
-/* 54 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 0), // void
+/* 23 */ _CFFI_OP(_CFFI_OP_STRUCT_UNION, 0), // FILE
+/* 24 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 2), // char
+/* 25 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 0), // void
 };
 
 static int _cffi_d_c_fseek(FILE * x0, long x1)
@@ -1345,393 +944,6 @@ _cffi_f_c_fseek(PyObject *self, PyObject *args)
 }
 #else
 #  define _cffi_f_c_fseek _cffi_d_c_fseek
-#endif
-
-static void _cffi_d_calculate_g2(FILE * x0, long long x1, int x2, uint64_t * x3, uint64_t x4, uint64_t x5, uint64_t x6, uint64_t * x7, int * x8, int x9, int x10, int x11)
-{
-  calculate_g2(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11);
-}
-#ifndef PYPY_VERSION
-static PyObject *
-_cffi_f_calculate_g2(PyObject *self, PyObject *args)
-{
-  FILE * x0;
-  long long x1;
-  int x2;
-  uint64_t * x3;
-  uint64_t x4;
-  uint64_t x5;
-  uint64_t x6;
-  uint64_t * x7;
-  int * x8;
-  int x9;
-  int x10;
-  int x11;
-  Py_ssize_t datasize;
-  PyObject *arg0;
-  PyObject *arg1;
-  PyObject *arg2;
-  PyObject *arg3;
-  PyObject *arg4;
-  PyObject *arg5;
-  PyObject *arg6;
-  PyObject *arg7;
-  PyObject *arg8;
-  PyObject *arg9;
-  PyObject *arg10;
-  PyObject *arg11;
-
-  if (!PyArg_UnpackTuple(args, "calculate_g2", 12, 12, &arg0, &arg1, &arg2, &arg3, &arg4, &arg5, &arg6, &arg7, &arg8, &arg9, &arg10, &arg11))
-    return NULL;
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(5), arg0, (char **)&x0);
-  if (datasize != 0) {
-    if (datasize < 0)
-      return NULL;
-    x0 = (FILE *)alloca((size_t)datasize);
-    memset((void *)x0, 0, (size_t)datasize);
-    if (_cffi_convert_array_from_object((char *)x0, _cffi_type(5), arg0) < 0)
-      return NULL;
-  }
-
-  x1 = _cffi_to_c_int(arg1, long long);
-  if (x1 == (long long)-1 && PyErr_Occurred())
-    return NULL;
-
-  x2 = _cffi_to_c_int(arg2, int);
-  if (x2 == (int)-1 && PyErr_Occurred())
-    return NULL;
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(15), arg3, (char **)&x3);
-  if (datasize != 0) {
-    if (datasize < 0)
-      return NULL;
-    x3 = (uint64_t *)alloca((size_t)datasize);
-    memset((void *)x3, 0, (size_t)datasize);
-    if (_cffi_convert_array_from_object((char *)x3, _cffi_type(15), arg3) < 0)
-      return NULL;
-  }
-
-  x4 = _cffi_to_c_int(arg4, uint64_t);
-  if (x4 == (uint64_t)-1 && PyErr_Occurred())
-    return NULL;
-
-  x5 = _cffi_to_c_int(arg5, uint64_t);
-  if (x5 == (uint64_t)-1 && PyErr_Occurred())
-    return NULL;
-
-  x6 = _cffi_to_c_int(arg6, uint64_t);
-  if (x6 == (uint64_t)-1 && PyErr_Occurred())
-    return NULL;
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(15), arg7, (char **)&x7);
-  if (datasize != 0) {
-    if (datasize < 0)
-      return NULL;
-    x7 = (uint64_t *)alloca((size_t)datasize);
-    memset((void *)x7, 0, (size_t)datasize);
-    if (_cffi_convert_array_from_object((char *)x7, _cffi_type(15), arg7) < 0)
-      return NULL;
-  }
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(19), arg8, (char **)&x8);
-  if (datasize != 0) {
-    if (datasize < 0)
-      return NULL;
-    x8 = (int *)alloca((size_t)datasize);
-    memset((void *)x8, 0, (size_t)datasize);
-    if (_cffi_convert_array_from_object((char *)x8, _cffi_type(19), arg8) < 0)
-      return NULL;
-  }
-
-  x9 = _cffi_to_c_int(arg9, int);
-  if (x9 == (int)-1 && PyErr_Occurred())
-    return NULL;
-
-  x10 = _cffi_to_c_int(arg10, int);
-  if (x10 == (int)-1 && PyErr_Occurred())
-    return NULL;
-
-  x11 = _cffi_to_c_int(arg11, int);
-  if (x11 == (int)-1 && PyErr_Occurred())
-    return NULL;
-
-  Py_BEGIN_ALLOW_THREADS
-  _cffi_restore_errno();
-  { calculate_g2(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11); }
-  _cffi_save_errno();
-  Py_END_ALLOW_THREADS
-
-  (void)self; /* unused */
-  Py_INCREF(Py_None);
-  return Py_None;
-}
-#else
-#  define _cffi_f_calculate_g2 _cffi_d_calculate_g2
-#endif
-
-static void _cffi_d_calculate_g2_fast(FILE * x0, long long x1, int x2, uint64_t * x3, uint64_t x4, uint64_t x5, uint64_t x6, uint64_t * x7, int * x8, int x9, int x10, int x11)
-{
-  calculate_g2_fast(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11);
-}
-#ifndef PYPY_VERSION
-static PyObject *
-_cffi_f_calculate_g2_fast(PyObject *self, PyObject *args)
-{
-  FILE * x0;
-  long long x1;
-  int x2;
-  uint64_t * x3;
-  uint64_t x4;
-  uint64_t x5;
-  uint64_t x6;
-  uint64_t * x7;
-  int * x8;
-  int x9;
-  int x10;
-  int x11;
-  Py_ssize_t datasize;
-  PyObject *arg0;
-  PyObject *arg1;
-  PyObject *arg2;
-  PyObject *arg3;
-  PyObject *arg4;
-  PyObject *arg5;
-  PyObject *arg6;
-  PyObject *arg7;
-  PyObject *arg8;
-  PyObject *arg9;
-  PyObject *arg10;
-  PyObject *arg11;
-
-  if (!PyArg_UnpackTuple(args, "calculate_g2_fast", 12, 12, &arg0, &arg1, &arg2, &arg3, &arg4, &arg5, &arg6, &arg7, &arg8, &arg9, &arg10, &arg11))
-    return NULL;
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(5), arg0, (char **)&x0);
-  if (datasize != 0) {
-    if (datasize < 0)
-      return NULL;
-    x0 = (FILE *)alloca((size_t)datasize);
-    memset((void *)x0, 0, (size_t)datasize);
-    if (_cffi_convert_array_from_object((char *)x0, _cffi_type(5), arg0) < 0)
-      return NULL;
-  }
-
-  x1 = _cffi_to_c_int(arg1, long long);
-  if (x1 == (long long)-1 && PyErr_Occurred())
-    return NULL;
-
-  x2 = _cffi_to_c_int(arg2, int);
-  if (x2 == (int)-1 && PyErr_Occurred())
-    return NULL;
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(15), arg3, (char **)&x3);
-  if (datasize != 0) {
-    if (datasize < 0)
-      return NULL;
-    x3 = (uint64_t *)alloca((size_t)datasize);
-    memset((void *)x3, 0, (size_t)datasize);
-    if (_cffi_convert_array_from_object((char *)x3, _cffi_type(15), arg3) < 0)
-      return NULL;
-  }
-
-  x4 = _cffi_to_c_int(arg4, uint64_t);
-  if (x4 == (uint64_t)-1 && PyErr_Occurred())
-    return NULL;
-
-  x5 = _cffi_to_c_int(arg5, uint64_t);
-  if (x5 == (uint64_t)-1 && PyErr_Occurred())
-    return NULL;
-
-  x6 = _cffi_to_c_int(arg6, uint64_t);
-  if (x6 == (uint64_t)-1 && PyErr_Occurred())
-    return NULL;
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(15), arg7, (char **)&x7);
-  if (datasize != 0) {
-    if (datasize < 0)
-      return NULL;
-    x7 = (uint64_t *)alloca((size_t)datasize);
-    memset((void *)x7, 0, (size_t)datasize);
-    if (_cffi_convert_array_from_object((char *)x7, _cffi_type(15), arg7) < 0)
-      return NULL;
-  }
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(19), arg8, (char **)&x8);
-  if (datasize != 0) {
-    if (datasize < 0)
-      return NULL;
-    x8 = (int *)alloca((size_t)datasize);
-    memset((void *)x8, 0, (size_t)datasize);
-    if (_cffi_convert_array_from_object((char *)x8, _cffi_type(19), arg8) < 0)
-      return NULL;
-  }
-
-  x9 = _cffi_to_c_int(arg9, int);
-  if (x9 == (int)-1 && PyErr_Occurred())
-    return NULL;
-
-  x10 = _cffi_to_c_int(arg10, int);
-  if (x10 == (int)-1 && PyErr_Occurred())
-    return NULL;
-
-  x11 = _cffi_to_c_int(arg11, int);
-  if (x11 == (int)-1 && PyErr_Occurred())
-    return NULL;
-
-  Py_BEGIN_ALLOW_THREADS
-  _cffi_restore_errno();
-  { calculate_g2_fast(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11); }
-  _cffi_save_errno();
-  Py_END_ALLOW_THREADS
-
-  (void)self; /* unused */
-  Py_INCREF(Py_None);
-  return Py_None;
-}
-#else
-#  define _cffi_f_calculate_g2_fast _cffi_d_calculate_g2_fast
-#endif
-
-static void _cffi_d_calculate_g2_ring(FILE * x0, long long x1, int x2, uint64_t * x3, uint64_t x4, uint64_t x5, uint64_t x6, uint64_t * x7, int * x8, int x9, int x10, int x11, int x12)
-{
-  calculate_g2_ring(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12);
-}
-#ifndef PYPY_VERSION
-static PyObject *
-_cffi_f_calculate_g2_ring(PyObject *self, PyObject *args)
-{
-  FILE * x0;
-  long long x1;
-  int x2;
-  uint64_t * x3;
-  uint64_t x4;
-  uint64_t x5;
-  uint64_t x6;
-  uint64_t * x7;
-  int * x8;
-  int x9;
-  int x10;
-  int x11;
-  int x12;
-  Py_ssize_t datasize;
-  PyObject *arg0;
-  PyObject *arg1;
-  PyObject *arg2;
-  PyObject *arg3;
-  PyObject *arg4;
-  PyObject *arg5;
-  PyObject *arg6;
-  PyObject *arg7;
-  PyObject *arg8;
-  PyObject *arg9;
-  PyObject *arg10;
-  PyObject *arg11;
-  PyObject *arg12;
-
-  if (!PyArg_UnpackTuple(args, "calculate_g2_ring", 13, 13, &arg0, &arg1, &arg2, &arg3, &arg4, &arg5, &arg6, &arg7, &arg8, &arg9, &arg10, &arg11, &arg12))
-    return NULL;
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(5), arg0, (char **)&x0);
-  if (datasize != 0) {
-    if (datasize < 0)
-      return NULL;
-    x0 = (FILE *)alloca((size_t)datasize);
-    memset((void *)x0, 0, (size_t)datasize);
-    if (_cffi_convert_array_from_object((char *)x0, _cffi_type(5), arg0) < 0)
-      return NULL;
-  }
-
-  x1 = _cffi_to_c_int(arg1, long long);
-  if (x1 == (long long)-1 && PyErr_Occurred())
-    return NULL;
-
-  x2 = _cffi_to_c_int(arg2, int);
-  if (x2 == (int)-1 && PyErr_Occurred())
-    return NULL;
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(15), arg3, (char **)&x3);
-  if (datasize != 0) {
-    if (datasize < 0)
-      return NULL;
-    x3 = (uint64_t *)alloca((size_t)datasize);
-    memset((void *)x3, 0, (size_t)datasize);
-    if (_cffi_convert_array_from_object((char *)x3, _cffi_type(15), arg3) < 0)
-      return NULL;
-  }
-
-  x4 = _cffi_to_c_int(arg4, uint64_t);
-  if (x4 == (uint64_t)-1 && PyErr_Occurred())
-    return NULL;
-
-  x5 = _cffi_to_c_int(arg5, uint64_t);
-  if (x5 == (uint64_t)-1 && PyErr_Occurred())
-    return NULL;
-
-  x6 = _cffi_to_c_int(arg6, uint64_t);
-  if (x6 == (uint64_t)-1 && PyErr_Occurred())
-    return NULL;
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(15), arg7, (char **)&x7);
-  if (datasize != 0) {
-    if (datasize < 0)
-      return NULL;
-    x7 = (uint64_t *)alloca((size_t)datasize);
-    memset((void *)x7, 0, (size_t)datasize);
-    if (_cffi_convert_array_from_object((char *)x7, _cffi_type(15), arg7) < 0)
-      return NULL;
-  }
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(19), arg8, (char **)&x8);
-  if (datasize != 0) {
-    if (datasize < 0)
-      return NULL;
-    x8 = (int *)alloca((size_t)datasize);
-    memset((void *)x8, 0, (size_t)datasize);
-    if (_cffi_convert_array_from_object((char *)x8, _cffi_type(19), arg8) < 0)
-      return NULL;
-  }
-
-  x9 = _cffi_to_c_int(arg9, int);
-  if (x9 == (int)-1 && PyErr_Occurred())
-    return NULL;
-
-  x10 = _cffi_to_c_int(arg10, int);
-  if (x10 == (int)-1 && PyErr_Occurred())
-    return NULL;
-
-  x11 = _cffi_to_c_int(arg11, int);
-  if (x11 == (int)-1 && PyErr_Occurred())
-    return NULL;
-
-  x12 = _cffi_to_c_int(arg12, int);
-  if (x12 == (int)-1 && PyErr_Occurred())
-    return NULL;
-
-  Py_BEGIN_ALLOW_THREADS
-  _cffi_restore_errno();
-  { calculate_g2_ring(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12); }
-  _cffi_save_errno();
-  Py_END_ALLOW_THREADS
-
-  (void)self; /* unused */
-  Py_INCREF(Py_None);
-  return Py_None;
-}
-#else
-#  define _cffi_f_calculate_g2_ring _cffi_d_calculate_g2_ring
 #endif
 
 static int _cffi_d_fclose(FILE * x0)
@@ -1940,21 +1152,18 @@ _cffi_f_timetrace(PyObject *self, PyObject *args)
 
 static const struct _cffi_global_s _cffi_globals[] = {
   { "c_fseek", (void *)_cffi_f_c_fseek, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 7), (void *)_cffi_d_c_fseek },
-  { "calculate_g2", (void *)_cffi_f_calculate_g2, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 23), (void *)_cffi_d_calculate_g2 },
-  { "calculate_g2_fast", (void *)_cffi_f_calculate_g2_fast, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 23), (void *)_cffi_d_calculate_g2_fast },
-  { "calculate_g2_ring", (void *)_cffi_f_calculate_g2_ring, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 37), (void *)_cffi_d_calculate_g2_ring },
   { "fclose", (void *)_cffi_f_fclose, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_O, 4), (void *)_cffi_d_fclose },
   { "fdopen", (void *)_cffi_f_fdopen, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 0), (void *)_cffi_d_fdopen },
   { "timetrace", (void *)_cffi_f_timetrace, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 11), (void *)_cffi_d_timetrace },
 };
 
 static const struct _cffi_struct_union_s _cffi_struct_unions[] = {
-  { "_IO_FILE", 52, _CFFI_F_OPAQUE,
+  { "_IO_FILE", 23, _CFFI_F_OPAQUE,
     (size_t)-1, -1, -1, 0 /* opaque */ },
 };
 
 static const struct _cffi_typename_s _cffi_typenames[] = {
-  { "FILE", 52 },
+  { "FILE", 23 },
 };
 
 static const struct _cffi_type_context_s _cffi_type_context = {
@@ -1964,12 +1173,12 @@ static const struct _cffi_type_context_s _cffi_type_context = {
   _cffi_struct_unions,
   NULL,  /* no enums */
   _cffi_typenames,
-  7,  /* num_globals */
+  4,  /* num_globals */
   1,  /* num_struct_unions */
   0,  /* num_enums */
   1,  /* num_typenames */
   NULL,  /* no includes */
-  55,  /* num_types */
+  26,  /* num_types */
   0,  /* flags */
 };
 
