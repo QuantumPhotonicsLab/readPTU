@@ -33,8 +33,8 @@ typedef struct {
 
 
 int circular_buf_reset(circular_buf_t * cbuf);
-int circular_buf_put(circular_buf_t * cbuf, uint8_t data);
-int circular_buf_oldest(circular_buf_t * cbuf, uint8_t * data);
+int circular_buf_put(circular_buf_t * cbuf, uint64_t data);
+int circular_buf_oldest(circular_buf_t * cbuf, uint64_t * data);
 
 
 int circular_buf_reset(circular_buf_t * cbuf)
@@ -495,8 +495,6 @@ void calculate_g2_ring(FILE* filehandle, long long record_type, int end_of_heade
      histogram          calculated g2 histogram
      */
     
-    
-    uint64_t start_time = 0;
     uint64_t oflcorrection = 0;
     uint64_t timetag = 0;
     uint64_t oldest_timetag;
@@ -518,7 +516,7 @@ void calculate_g2_ring(FILE* filehandle, long long record_type, int end_of_heade
     circular_buf_t cbuf;
     cbuf.size = buffer_size;
     circular_buf_reset(&cbuf);
-    cbuf.buffer = calloc(cbuf.size); // set memory to zero so we have a proper
+    cbuf.buffer = calloc(cbuf.size, sizeof(uint64_t)); // set memory to zero so we have a proper
     // starting time.
     
     // Read all the photons
@@ -540,7 +538,7 @@ void calculate_g2_ring(FILE* filehandle, long long record_type, int end_of_heade
             for(i = 0; i < cbuf.count; i++) {
                 delta = timetag - cbuf.buffer[i];
                 if (delta < max_correlation_window) {
-                    idx = (int)(delta * nb_of_bins / max_correlation_window)
+                    idx = (int)(delta * nb_of_bins / max_correlation_window);
                     histogram[i] = histogram[i] + 1;
                 }
             }
