@@ -33,9 +33,7 @@ typedef struct {
 } photon;
 
 typedef struct {
-    // photon photons[RECORD_CHUNK]; // using this will improve memory locality
-    uint64_t timetag[RECORD_CHUNK];
-    int channel[RECORD_CHUNK];
+    photon photons[RECORD_CHUNK]; // using this will improve memory locality
     size_t head;  // to keep track of what was the last read record in buffer
     size_t count; // if don't have enough photons, for example due to many records being oflcorrection flags
 } photon_buf_t;
@@ -47,16 +45,15 @@ void photon_buf_reset(photon_buf_t *buffer) {
 
 void photon_buf_pop(photon_buf_t *buffer, uint64_t *timetag, int *channel) {
     size_t head = buffer->head;
-//    *oflcorrection = buffer->oflcorrection[head];
-    *timetag = buffer->timetag[head];
-    *channel = buffer->channel[head];
+    *timetag = buffer->photons[head].timetag;
+    *channel = buffer->photons[head].channel;
     buffer->head = head + 1;
 }
 
 void photon_buf_push(photon_buf_t *buffer, uint64_t timetag, int channel) {
     size_t count = buffer->count;
-    buffer->timetag[count] = timetag;
-    buffer->channel[count] = channel;
+    buffer->photons[count].timetag = timetag;
+    buffer->photons[count].channel = channel;
     buffer->count = count + 1;
 }
 // ================================================
