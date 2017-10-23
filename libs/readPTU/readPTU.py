@@ -250,8 +250,7 @@ class PTUfile():
             endline = '\n'
             if tag['type'] == 'tyAnsiString':
                 endline = tag['data'] + '\n'
-            print((line % value_fmt).format(key, tag['value'], tag['idx'], tag['type']), 
-                  end=endline)
+            print((line % value_fmt).format(key, tag['value'], tag['idx'], tag['type'],end=endline))
             
     def reset_rec_num(self, at=None):
         """
@@ -392,7 +391,7 @@ class PTUmeasurement():
 
     def calculate_g2_ring(self, correlation_window, resolution,
                           post_selec_ranges=None, channel_start=0,
-                          channel_stop=1, buffer_size=2**10):
+                          channel_stop=1, buffer_size=2**5):
         """
         Return g2 using ring buffer algorithm.
 
@@ -473,7 +472,7 @@ if __name__ == '__main__':
     g2_coincidence_window = 1e6  # in picoseconds
     g2_post_selec_ranges = [[4e5,1e6]]  # in record numbers
 
-    filename = r'C:\Users\QPL\Desktop\temp_measurements\default.ptu'
+    filename = r'/Users/garfield/Downloads/default.ptu'
 
     # filename = r'/Users/raphaelproux/Desktop/TTTR/t2htr2a1loc2.ptu'
 
@@ -489,7 +488,7 @@ if __name__ == '__main__':
         pl.savetxt('timetrace.txt', pl.array([timetrace_x, timetrace_y, timetrace_recnum]).transpose(), delimiter='\t')
 
         start_time = time.time()
-        histo_x, histo_y = ptu_meas.calculate_g2(1000000,10000, post_selec_ranges=[[0,100000000]])  #, fast=False)
+        histo_x, histo_y = ptu_meas.calculate_g2_ring(1000000,10000, post_selec_ranges=[[0,100000000]])#, fast=False)
         stop_time = time.time()
         print('g2 calculation took', stop_time - start_time, 's')
 

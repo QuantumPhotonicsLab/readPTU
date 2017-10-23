@@ -981,7 +981,7 @@ void calculate_g2_ring(FILE* filehandle, long long record_type, int end_of_heade
     uint64_t oldest_timetag;
     int channel = -1;
     
-    int i;  // loop indexing
+    uint64_t i;  // loop indexing
     int idx;  // index for histogram
     
     uint64_t delta;
@@ -1006,7 +1006,7 @@ void calculate_g2_ring(FILE* filehandle, long long record_type, int end_of_heade
                     &oflcorrection, &timetag, &channel);
         
         if (channel == channel_start) {
-            circular_buf_put(&cbuf, i);
+            circular_buf_put(&cbuf, timetag);
             circular_buf_oldest(&cbuf, &oldest_timetag);
             new_correlation_window = timetag - oldest_timetag;
             
@@ -1019,8 +1019,8 @@ void calculate_g2_ring(FILE* filehandle, long long record_type, int end_of_heade
             for(i = 0; i < cbuf.count; i++) {
                 delta = timetag - cbuf.buffer[i];
                 if (delta < max_correlation_window) {
-                    idx = (int)(delta * nb_of_bins / max_correlation_window);
-                    histogram[i] = histogram[i] + 1;
+                    idx = (uint64_t)(delta * nb_of_bins / max_correlation_window);
+                    histogram[idx] = histogram[idx] + 1;
                 }
             }
         }

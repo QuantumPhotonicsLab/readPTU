@@ -250,8 +250,7 @@ class PTUfile():
             endline = '\n'
             if tag['type'] == 'tyAnsiString':
                 endline = tag['data'] + '\n'
-            print((line % value_fmt).format(key, tag['value'], tag['idx'], tag['type']), 
-                  end=endline)
+            print((line % value_fmt).format(key, tag['value'], tag['idx'], tag['type'],end=endline))
             
     def reset_rec_num(self, at=None):
         """
@@ -302,7 +301,7 @@ class PTUmeasurement():
         resolution *= 1e12 # now in picoseconds
         self.meas.reset_rec_num()
         
-        nb_of_bins = int(self.meas.acq_time / resolution) ;
+        nb_of_bins = int(self.meas.acq_time / resolution);
         c_time_vector = ffi.new("uint64_t[{}]".format(nb_of_bins))
         c_time_trace = ffi.new("int[{}]".format(nb_of_bins))
         c_rec_num_trace = ffi.new("uint64_t[{}]".format(nb_of_bins))
@@ -390,79 +389,79 @@ class PTUmeasurement():
 
 #         return pl.array(time_vector[:-1]), pl.array(histogram)
 
-#     def calculate_g2_ring(self, correlation_window, resolution,
-#                           post_selec_ranges=None, channel_start=0,
-#                           channel_stop=1, buffer_size=2**10):
-#         """
-#         Return g2 using ring buffer algorithm.
+    def calculate_g2_ring(self, correlation_window, resolution,
+                          post_selec_ranges=None, channel_start=0,
+                          channel_stop=1, buffer_size=2**5):
+        """
+        Return g2 using ring buffer algorithm.
 
-#         Calculated from the file, given the start and stop channels and the
-#         record number range to analyse (which allows post-selection)
+        Calculated from the file, given the start and stop channels and the
+        record number range to analyse (which allows post-selection)
 
-#         Args:
-#             correlation_window (int): correlation window length in number of
-#                 global resolutions (typically picoseconds)
-#             resolution (int): length of one time bin in number of global
-#                 resolutions (typically picoseconds)
-#             post_selec_ranges (list, optional): 2 levels list (eg [[0,100]]).
-#                 Each element of the first level is a 2-element list with a
-#                 start record number and a stop record number. By default,
-#                 will take all the measurement (post_selec_ranges=None)
-#             channel_start (int, optional): channel number of the start photons (default 0, sync)
-#             channel_stop (int, optional): channel number of the stop photons (default 1)
-#             fast (bool, optional): in fast mode (default, fast=True), the g2 is
-#                 calculated using subsequent pairs of start-stop photons reading
-#                 them chronologically along the file (start-stop -> start-stop -> etc.) and discarding other photons. This algorithm will produce an 
-#                 exponential decay artefact on long time scales or with high photon rates. In not fast mode (fast=False), the g2 is calculated 
-#                 considering all start-stop photon combinations, therefore not exhibiting any artefact.
+        Args:
+            correlation_window (int): correlation window length in number of
+                global resolutions (typically picoseconds)
+            resolution (int): length of one time bin in number of global
+                resolutions (typically picoseconds)
+            post_selec_ranges (list, optional): 2 levels list (eg [[0,100]]).
+                Each element of the first level is a 2-element list with a
+                start record number and a stop record number. By default,
+                will take all the measurement (post_selec_ranges=None)
+            channel_start (int, optional): channel number of the start photons (default 0, sync)
+            channel_stop (int, optional): channel number of the stop photons (default 1)
+            fast (bool, optional): in fast mode (default, fast=True), the g2 is
+                calculated using subsequent pairs of start-stop photons reading
+                them chronologically along the file (start-stop -> start-stop -> etc.) and discarding other photons. This algorithm will produce an 
+                exponential decay artefact on long time scales or with high photon rates. In not fast mode (fast=False), the g2 is calculated 
+                considering all start-stop photon combinations, therefore not exhibiting any artefact.
 
-#         Returns:
-#             2-tuple: numpy array vector of times (beginning of each time-bin),
-#                      numpy array vector of histogram (number of start-stop photon couples per delay time bin)
-#         """
-#         calc_g2 = lib.calculate_g2_ring
+        Returns:
+            2-tuple: numpy array vector of times (beginning of each time-bin),
+                     numpy array vector of histogram (number of start-stop photon couples per delay time bin)
+        """
+        calc_g2 = lib.calculate_g2_ring
 
-#         nb_of_bins = int(pl.floor(float(correlation_window) / resolution))
-#         histogram = pl.zeros(nb_of_bins)
+        nb_of_bins = int(pl.floor(float(correlation_window) / resolution))
+        histogram = pl.zeros(nb_of_bins)
 
-#         if post_selec_ranges is None:
-#             post_selec_ranges = [[0, self.meas.num_records]]
+        if post_selec_ranges is None:
+            post_selec_ranges = [[0, self.meas.num_records]]
 
-#         for post_selec_range in post_selec_ranges:
-#             if post_selec_range[1] > self.meas.num_records:
-#                 post_selec_range[1] = self.meas.num_records
+        for post_selec_range in post_selec_ranges:
+            if post_selec_range[1] > self.meas.num_records:
+                post_selec_range[1] = self.meas.num_records
 
-#             print(post_selec_range)
+            print(post_selec_range)
 
-#             c_time_vector = ffi.new("uint64_t[{}]".format(nb_of_bins + 1))
-#             for i in range(nb_of_bins + 1):
-#                 c_time_vector[i] = i * resolution
+            c_time_vector = ffi.new("uint64_t[{}]".format(nb_of_bins + 1))
+            for i in range(nb_of_bins + 1):
+                c_time_vector[i] = i * resolution
 
-#             c_histogram = ffi.new("int[{}]".format(nb_of_bins))
-#             for i in range(nb_of_bins):
-#                 c_histogram[i] = 0
+            c_histogram = ffi.new("int[{}]".format(nb_of_bins))
+            for i in range(nb_of_bins):
+                c_histogram[i] = 0
 
-# #            print(nb_of_bins)
-#             calc_g2(self.meas.c_filehandle,
-#                     self.meas.rec_type[self.meas.record_type],
-#                     self.meas.end_header_offset,
-#                     self.meas.c_rec_num,
-#                     self.meas.num_records,
-#                     post_selec_range[0],
-#                     post_selec_range[1],
-#                     c_time_vector,
-#                     c_histogram,
-#                     nb_of_bins,
-#                     channel_start,
-#                     channel_stop,
-#                     buffer_size)
+#            print(nb_of_bins)
+            calc_g2(self.meas.c_filehandle,
+                    self.meas.rec_type[self.meas.record_type],
+                    self.meas.end_header_offset,
+                    self.meas.c_rec_num,
+                    self.meas.num_records,
+                    post_selec_range[0],
+                    post_selec_range[1],
+                    c_time_vector,
+                    c_histogram,
+                    nb_of_bins,
+                    channel_start,
+                    channel_stop,
+                    buffer_size)
 
-#             for i in range(nb_of_bins):
-#                 histogram[i] += c_histogram[i]
+            for i in range(nb_of_bins):
+                histogram[i] += c_histogram[i]
 
-#         time_vector = [time for time in c_time_vector]
+        time_vector = [time for time in c_time_vector]
 
-#         return pl.array(time_vector[:-1]), pl.array(histogram)
+        return pl.array(time_vector[:-1]), pl.array(histogram)
 
 
 if __name__ == '__main__':
@@ -473,7 +472,7 @@ if __name__ == '__main__':
     g2_coincidence_window = 1e6  # in picoseconds
     g2_post_selec_ranges = [[4e5,1e6]]  # in record numbers
 
-    filename = r'C:\Users\QPL\Desktop\temp_measurements\default.ptu'
+    filename = r'/Users/garfield/Downloads/default.ptu'
 
     # filename = r'/Users/raphaelproux/Desktop/TTTR/t2htr2a1loc2.ptu'
 
@@ -489,7 +488,7 @@ if __name__ == '__main__':
         pl.savetxt('timetrace.txt', pl.array([timetrace_x, timetrace_y, timetrace_recnum]).transpose(), delimiter='\t')
 
         start_time = time.time()
-        histo_x, histo_y = ptu_meas.calculate_g2(1000000,10000, post_selec_ranges=[[0,100000000]])  #, fast=False)
+        histo_x, histo_y = ptu_meas.calculate_g2_ring(1000000,10000, post_selec_ranges=[[0,100000000]])  #, fast=False)
         stop_time = time.time()
         print('g2 calculation took', stop_time - start_time, 's')
 
