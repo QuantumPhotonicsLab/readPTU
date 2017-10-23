@@ -1013,7 +1013,7 @@ void calculate_g2(FILE* filehandle, long long record_type, int end_of_header, ui
     uint64_t oflcorrection = 0;
     uint64_t timetag = 0;
     int channel = -1;
-    int i = 0;
+    uint64_t i = 0;
     uint64_t correlation_window = 0;
     //    long next_print = 0;
     correlation_window = time_vector[nb_of_bins];
@@ -1095,7 +1095,7 @@ void calculate_g2(FILE* filehandle, long long record_type, int end_of_header, ui
             }
         }
         // remove stop photons which are out of the correlation window (pop)
-        for(i = 0; i < stop_corr_buff_length; i++) {
+        for(i = 0; i < (uint64_t) stop_corr_buff_length; i++) {
             if(stop_corr_buff_head->next->val < start_time) {
                 pop(stop_corr_buff_head, &stop_corr_buff_length);
             }
@@ -1107,7 +1107,7 @@ void calculate_g2(FILE* filehandle, long long record_type, int end_of_header, ui
         current = stop_corr_buff_head->next;
         while(current != NULL) {
             if (current->val - start_time < correlation_window) {
-                i = (int) (current->val - start_time) * nb_of_bins / correlation_window;
+                i = (uint64_t) (current->val - start_time) * nb_of_bins / correlation_window;
                 histogram[i] = histogram[i] + 1;
             }
             current = current->next;
@@ -1143,7 +1143,7 @@ void calculate_g2_fast(FILE* filehandle, long long record_type, int end_of_heade
     uint64_t oflcorrection = 0;
     uint64_t timetag = 0;
     int channel = -1;
-    int i = 0;
+    uint64_t i = 0;
     uint64_t correlation_window = 0;
     //    long next_print = 0;
     correlation_window = time_vector[nb_of_bins];
@@ -1184,12 +1184,11 @@ void calculate_g2_fast(FILE* filehandle, long long record_type, int end_of_heade
         // ADD DELAY TO HISTOGRAM
         // add occurence to result histogram if the delay is in the correlation window
         if (stop_time - start_time < correlation_window) {
-            i = (int) (stop_time - start_time) * nb_of_bins / correlation_window;
+            i = (uint64_t) (stop_time - start_time) * nb_of_bins / correlation_window;
             histogram[i] = histogram[i] + 1;
         }
     }
 }
-
 
 
 /************************************************************/

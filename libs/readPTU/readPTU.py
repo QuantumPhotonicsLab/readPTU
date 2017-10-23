@@ -24,7 +24,7 @@ import struct
 import mmap
 import time
 import collections as coll
-from _readTTTRRecords import ffi, lib
+from analysis.libs.readPTU._readTTTRRecords import ffi, lib
 
 
 class PTUfile():
@@ -463,6 +463,35 @@ class PTUmeasurement():
         time_vector = [time for time in c_time_vector]
 
         return pl.array(time_vector[:-1]), pl.array(histogram)
+
+
+def construct_postselect_vector(timetrace_x, timetrace_y, threshold):
+    if timetrace_y[0] > threshold:
+        detect_down = True
+        post_selec_ranges = [[timetrace_x[0]]]
+    else:
+        post_selec_ranges = []
+        detect_down = False
+    for x1, x2, y1, y2 in zip(timetrace_x[0::2], timetrace_x[1::2], timetrace_y[0::2], timetrace_y[1::2]):
+        if y1 < threshold and y2 > threshold and not detect_down:  # rising edge
+            interpolated_edge_pos = int(x2 - (x2 - x1) / (y2 - y1) * (y2 - threshold))
+            post_selec_ranges.append([interpolated_edge_pos])
+            detect_down = True
+        if detect_down and y1 > threshold and y2 < threshold:
+            interpolated_edge_pos = int(x2 - (x2 - x1) / (y2 - y1) * (y2 - threshold))
+            post_selec_ranges[-1].append(interpolated_edge_pos)
+            detect_down = False
+    if detect_down:  # still waiting for a lowering edge
+        post_selec_ranges[-1].append(timetrace_x[-1])
+
+    if len(post_selec_ranges) > 0:
+        return post_selec_ranges
+    else:
+        print('Warning: no post-select range found.')
+        return None
+
+
+
 
 
 if __name__ == '__main__':
