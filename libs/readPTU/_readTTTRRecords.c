@@ -453,6 +453,79 @@ static void (*_cffi_call_python_org)(struct _cffi_externpy_s *, char *);
 #define rtTimeHarp260PT3 0x00010306    // (SubID = $00 ,RecFmt: $01) (V1), T-Mode: $02 (T3), HW: $06 (TimeHarp260P)
 #define rtTimeHarp260PT2 0x00010206    // (SubID = $00 ,RecFmt: $01) (V1), T-Mode: $02 (T2), HW: $06 (TimeHarp260P)
 
+// ====================================================================
+// CIRCULAR BUFFER Structure for use with the g2 algorithm based on it
+// ====================================================================
+typedef struct {
+    uint64_t *buffer;
+    size_t head;
+    size_t count;
+    size_t size; //of the buffer
+} circular_buf_t;
+
+
+int circular_buf_reset(circular_buf_t * cbuf);
+int circular_buf_put(circular_buf_t * cbuf, uint64_t data);
+int circular_buf_oldest(circular_buf_t * cbuf, uint64_t * data);
+
+
+int circular_buf_reset(circular_buf_t * cbuf)
+{
+    int r = -1;
+    
+    if(cbuf)
+    {
+        cbuf->head = 0;
+        cbuf->count = 0;
+        r = 0;
+    }
+    
+    return r;
+}
+
+int circular_buf_put(circular_buf_t * cbuf, uint64_t data)
+{
+    int r = -1;
+    
+    if(cbuf)
+    {
+        cbuf->buffer[cbuf->head] = data;
+        cbuf->head = (cbuf->head + 1) % cbuf->size;
+        if(cbuf->count < cbuf->size) {
+            cbuf->count = cbuf->count + 1;
+        }
+        
+        r = 0;
+    }
+    
+    return r;
+}
+
+int circular_buf_oldest(circular_buf_t * cbuf, uint64_t * data) {
+    int r = -1;
+    
+    // CAUTION: Even if the buffer is empty oldest will return whatever
+    // is in buffer[0]. We do so because it is conveninet for our specific
+    // application but it can be catastrophic.
+    // TAKE HOME MESSAGE: Don't use this implementation as is for anything
+    // other than computing g2.
+    if(cbuf && data) {
+        if(cbuf->count < cbuf->size) {
+            *data = cbuf->buffer[0];
+        } else {
+            *data = cbuf->buffer[cbuf->head];
+        }
+        
+        r = 0;
+    }
+    
+    return r;
+}
+
+// ============================
+// END OF CIRCULAR BUFFER
+// ============================
+
 // this 'node' structure is a chained list to be used with the buffers. It is easy to add an item at the end and read+remove an item at the beginning (see the three functions below).
 typedef struct node {
     uint64_t val;
@@ -826,6 +899,85 @@ void timetrace(FILE* filehandle, long long record_type, int end_of_header, uint6
     }
 }
 
+void calculate_g2_ring(FILE* filehandle, long long record_type, int end_of_header,
+                       uint64_t *RecNum, uint64_t NumRecords, uint64_t RecNum_start,
+                       uint64_t RecNum_stop, uint64_t *time_vector, int *histogram,
+                       int nb_of_bins, int channel_start, int channel_stop,
+                       int buffer_size)
+{
+    /*
+     calculate_g2() computes the g2 directly reading the measurement file. It uses a more complex algorithm than calculate_g2_fast(). This function will keep all photons in memory buffers, such that each start photon will be measured in regard of all the stop photons detected in a correlation window around it. This way, the measurement does not stop at the first stop photon but will take into account longer time scales. It is therefore safer to use with high photon count rates.
+     Inputs:
+     filehandle         FILE pointer with an open record file to read the photons
+     record_type        record type which depends on the device which recorded the file (see constants at the beginning of file)
+     end_of_header      offset in bytes to the beginning of the record section in the file
+     RecNum             pointer to the index of the record being read
+     NumRecords         total number of records
+     RecNum_start       start of the section of records to analyse for the g2 (in terms of record index)
+     RecNum_stop        stop of the section of records to analyse for the g2
+     time_vector        precalculated array of times used for the x-axis of the g2 histogram. Should have nb_of_bins + 1 elements.
+     histogram          preallocated array of zeros used for the g2 histogram. Should have nb_of_bins elements.
+     nb_of_bins         number of bins for the histogram (should correspond to the length of the histogram array)
+     channel_start      channel number used for start photons (sync will generally be 0)
+     channel_stop       channel number used for stop photons (> 0, often 1)
+     buffer_size        Size of the ring buffer
+     Outputs:
+     filehandle         FILE pointer with reader at the position of last analysed record
+     RecNum             index of last analysed record
+     histogram          calculated g2 histogram
+     */
+    
+    uint64_t oflcorrection = 0;
+    uint64_t timetag = 0;
+    uint64_t oldest_timetag;
+    int channel = -1;
+    
+    int i;  // loop indexing
+    int idx;  // index for histogram
+    
+    uint64_t delta;
+    uint64_t new_correlation_window;
+    uint64_t min_correlation_window = 18e18;  // almost 2^64
+    uint64_t max_correlation_window = time_vector[nb_of_bins];
+    
+    // reset file reader and go to the start position RecNum_start
+    c_fseek(filehandle, end_of_header + 4 * RecNum_start);
+    *RecNum = RecNum_start;
+    
+    // Prepare the circular buffer for the start photons
+    circular_buf_t cbuf;
+    cbuf.size = buffer_size;
+    circular_buf_reset(&cbuf);
+    cbuf.buffer = calloc(cbuf.size, sizeof(uint64_t)); // set memory to zero so we have a proper
+    // starting time.
+    
+    // Read all the photons
+    while(*RecNum < RecNum_stop && *RecNum < NumRecords){
+        next_photon(filehandle, record_type, RecNum, NumRecords,
+                    &oflcorrection, &timetag, &channel);
+        
+        if (channel == channel_start) {
+            circular_buf_put(&cbuf, i);
+            circular_buf_oldest(&cbuf, &oldest_timetag);
+            new_correlation_window = timetag - oldest_timetag;
+            
+            if (new_correlation_window < min_correlation_window) {
+                min_correlation_window = new_correlation_window;
+            }
+        }
+        
+        if (channel == channel_stop) {
+            for(i = 0; i < cbuf.count; i++) {
+                delta = timetag - cbuf.buffer[i];
+                if (delta < max_correlation_window) {
+                    idx = (int)(delta * nb_of_bins / max_correlation_window);
+                    histogram[i] = histogram[i] + 1;
+                }
+            }
+        }
+    }
+}
+
 void calculate_g2(FILE* filehandle, long long record_type, int end_of_header, uint64_t *RecNum, uint64_t NumRecords, uint64_t RecNum_start, uint64_t RecNum_stop, uint64_t *time_vector, int *histogram, int nb_of_bins, int channel_start, int channel_stop)
 {
     /*
@@ -1045,16 +1197,16 @@ void calculate_g2_fast(FILE* filehandle, long long record_type, int end_of_heade
 static void *_cffi_types[] = {
 /*  0 */ _CFFI_OP(_CFFI_OP_FUNCTION, 5), // FILE *()(int, char const *)
 /*  1 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7), // int
-/*  2 */ _CFFI_OP(_CFFI_OP_POINTER, 38), // char const *
+/*  2 */ _CFFI_OP(_CFFI_OP_POINTER, 53), // char const *
 /*  3 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
 /*  4 */ _CFFI_OP(_CFFI_OP_FUNCTION, 1), // int()(FILE *)
-/*  5 */ _CFFI_OP(_CFFI_OP_POINTER, 37), // FILE *
+/*  5 */ _CFFI_OP(_CFFI_OP_POINTER, 52), // FILE *
 /*  6 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
 /*  7 */ _CFFI_OP(_CFFI_OP_FUNCTION, 1), // int()(FILE *, long)
 /*  8 */ _CFFI_OP(_CFFI_OP_NOOP, 5),
 /*  9 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 9), // long
 /* 10 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/* 11 */ _CFFI_OP(_CFFI_OP_FUNCTION, 39), // void()(FILE *, long long, int, uint64_t *, uint64_t, uint64_t, uint64_t *, int *, uint64_t *, int)
+/* 11 */ _CFFI_OP(_CFFI_OP_FUNCTION, 54), // void()(FILE *, long long, int, uint64_t *, uint64_t, uint64_t, uint64_t *, int *, uint64_t *, int)
 /* 12 */ _CFFI_OP(_CFFI_OP_NOOP, 5),
 /* 13 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 11), // long long
 /* 14 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
@@ -1066,7 +1218,7 @@ static void *_cffi_types[] = {
 /* 20 */ _CFFI_OP(_CFFI_OP_NOOP, 15),
 /* 21 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
 /* 22 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/* 23 */ _CFFI_OP(_CFFI_OP_FUNCTION, 39), // void()(FILE *, long long, int, uint64_t *, uint64_t, uint64_t, uint64_t, uint64_t *, int *, int, int, int)
+/* 23 */ _CFFI_OP(_CFFI_OP_FUNCTION, 54), // void()(FILE *, long long, int, uint64_t *, uint64_t, uint64_t, uint64_t, uint64_t *, int *, int, int, int)
 /* 24 */ _CFFI_OP(_CFFI_OP_NOOP, 5),
 /* 25 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 11),
 /* 26 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
@@ -1080,9 +1232,24 @@ static void *_cffi_types[] = {
 /* 34 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
 /* 35 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
 /* 36 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/* 37 */ _CFFI_OP(_CFFI_OP_STRUCT_UNION, 0), // FILE
-/* 38 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 2), // char
-/* 39 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 0), // void
+/* 37 */ _CFFI_OP(_CFFI_OP_FUNCTION, 54), // void()(FILE *, long long, int, uint64_t *, uint64_t, uint64_t, uint64_t, uint64_t *, int *, int, int, int, int)
+/* 38 */ _CFFI_OP(_CFFI_OP_NOOP, 5),
+/* 39 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 11),
+/* 40 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
+/* 41 */ _CFFI_OP(_CFFI_OP_NOOP, 15),
+/* 42 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 24),
+/* 43 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 24),
+/* 44 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 24),
+/* 45 */ _CFFI_OP(_CFFI_OP_NOOP, 15),
+/* 46 */ _CFFI_OP(_CFFI_OP_NOOP, 19),
+/* 47 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
+/* 48 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
+/* 49 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
+/* 50 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
+/* 51 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
+/* 52 */ _CFFI_OP(_CFFI_OP_STRUCT_UNION, 0), // FILE
+/* 53 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 2), // char
+/* 54 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 0), // void
 };
 
 static int _cffi_d_c_fseek(FILE * x0, long x1)
@@ -1385,6 +1552,139 @@ _cffi_f_calculate_g2_fast(PyObject *self, PyObject *args)
 #  define _cffi_f_calculate_g2_fast _cffi_d_calculate_g2_fast
 #endif
 
+static void _cffi_d_calculate_g2_ring(FILE * x0, long long x1, int x2, uint64_t * x3, uint64_t x4, uint64_t x5, uint64_t x6, uint64_t * x7, int * x8, int x9, int x10, int x11, int x12)
+{
+  calculate_g2_ring(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12);
+}
+#ifndef PYPY_VERSION
+static PyObject *
+_cffi_f_calculate_g2_ring(PyObject *self, PyObject *args)
+{
+  FILE * x0;
+  long long x1;
+  int x2;
+  uint64_t * x3;
+  uint64_t x4;
+  uint64_t x5;
+  uint64_t x6;
+  uint64_t * x7;
+  int * x8;
+  int x9;
+  int x10;
+  int x11;
+  int x12;
+  Py_ssize_t datasize;
+  PyObject *arg0;
+  PyObject *arg1;
+  PyObject *arg2;
+  PyObject *arg3;
+  PyObject *arg4;
+  PyObject *arg5;
+  PyObject *arg6;
+  PyObject *arg7;
+  PyObject *arg8;
+  PyObject *arg9;
+  PyObject *arg10;
+  PyObject *arg11;
+  PyObject *arg12;
+
+  if (!PyArg_UnpackTuple(args, "calculate_g2_ring", 13, 13, &arg0, &arg1, &arg2, &arg3, &arg4, &arg5, &arg6, &arg7, &arg8, &arg9, &arg10, &arg11, &arg12))
+    return NULL;
+
+  datasize = _cffi_prepare_pointer_call_argument(
+      _cffi_type(5), arg0, (char **)&x0);
+  if (datasize != 0) {
+    if (datasize < 0)
+      return NULL;
+    x0 = (FILE *)alloca((size_t)datasize);
+    memset((void *)x0, 0, (size_t)datasize);
+    if (_cffi_convert_array_from_object((char *)x0, _cffi_type(5), arg0) < 0)
+      return NULL;
+  }
+
+  x1 = _cffi_to_c_int(arg1, long long);
+  if (x1 == (long long)-1 && PyErr_Occurred())
+    return NULL;
+
+  x2 = _cffi_to_c_int(arg2, int);
+  if (x2 == (int)-1 && PyErr_Occurred())
+    return NULL;
+
+  datasize = _cffi_prepare_pointer_call_argument(
+      _cffi_type(15), arg3, (char **)&x3);
+  if (datasize != 0) {
+    if (datasize < 0)
+      return NULL;
+    x3 = (uint64_t *)alloca((size_t)datasize);
+    memset((void *)x3, 0, (size_t)datasize);
+    if (_cffi_convert_array_from_object((char *)x3, _cffi_type(15), arg3) < 0)
+      return NULL;
+  }
+
+  x4 = _cffi_to_c_int(arg4, uint64_t);
+  if (x4 == (uint64_t)-1 && PyErr_Occurred())
+    return NULL;
+
+  x5 = _cffi_to_c_int(arg5, uint64_t);
+  if (x5 == (uint64_t)-1 && PyErr_Occurred())
+    return NULL;
+
+  x6 = _cffi_to_c_int(arg6, uint64_t);
+  if (x6 == (uint64_t)-1 && PyErr_Occurred())
+    return NULL;
+
+  datasize = _cffi_prepare_pointer_call_argument(
+      _cffi_type(15), arg7, (char **)&x7);
+  if (datasize != 0) {
+    if (datasize < 0)
+      return NULL;
+    x7 = (uint64_t *)alloca((size_t)datasize);
+    memset((void *)x7, 0, (size_t)datasize);
+    if (_cffi_convert_array_from_object((char *)x7, _cffi_type(15), arg7) < 0)
+      return NULL;
+  }
+
+  datasize = _cffi_prepare_pointer_call_argument(
+      _cffi_type(19), arg8, (char **)&x8);
+  if (datasize != 0) {
+    if (datasize < 0)
+      return NULL;
+    x8 = (int *)alloca((size_t)datasize);
+    memset((void *)x8, 0, (size_t)datasize);
+    if (_cffi_convert_array_from_object((char *)x8, _cffi_type(19), arg8) < 0)
+      return NULL;
+  }
+
+  x9 = _cffi_to_c_int(arg9, int);
+  if (x9 == (int)-1 && PyErr_Occurred())
+    return NULL;
+
+  x10 = _cffi_to_c_int(arg10, int);
+  if (x10 == (int)-1 && PyErr_Occurred())
+    return NULL;
+
+  x11 = _cffi_to_c_int(arg11, int);
+  if (x11 == (int)-1 && PyErr_Occurred())
+    return NULL;
+
+  x12 = _cffi_to_c_int(arg12, int);
+  if (x12 == (int)-1 && PyErr_Occurred())
+    return NULL;
+
+  Py_BEGIN_ALLOW_THREADS
+  _cffi_restore_errno();
+  { calculate_g2_ring(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12); }
+  _cffi_save_errno();
+  Py_END_ALLOW_THREADS
+
+  (void)self; /* unused */
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+#else
+#  define _cffi_f_calculate_g2_ring _cffi_d_calculate_g2_ring
+#endif
+
 static int _cffi_d_fclose(FILE * x0)
 {
   return fclose(x0);
@@ -1593,18 +1893,19 @@ static const struct _cffi_global_s _cffi_globals[] = {
   { "c_fseek", (void *)_cffi_f_c_fseek, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 7), (void *)_cffi_d_c_fseek },
   { "calculate_g2", (void *)_cffi_f_calculate_g2, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 23), (void *)_cffi_d_calculate_g2 },
   { "calculate_g2_fast", (void *)_cffi_f_calculate_g2_fast, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 23), (void *)_cffi_d_calculate_g2_fast },
+  { "calculate_g2_ring", (void *)_cffi_f_calculate_g2_ring, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 37), (void *)_cffi_d_calculate_g2_ring },
   { "fclose", (void *)_cffi_f_fclose, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_O, 4), (void *)_cffi_d_fclose },
   { "fdopen", (void *)_cffi_f_fdopen, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 0), (void *)_cffi_d_fdopen },
   { "timetrace", (void *)_cffi_f_timetrace, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 11), (void *)_cffi_d_timetrace },
 };
 
 static const struct _cffi_struct_union_s _cffi_struct_unions[] = {
-  { "_IO_FILE", 37, _CFFI_F_OPAQUE,
+  { "_IO_FILE", 52, _CFFI_F_OPAQUE,
     (size_t)-1, -1, -1, 0 /* opaque */ },
 };
 
 static const struct _cffi_typename_s _cffi_typenames[] = {
-  { "FILE", 37 },
+  { "FILE", 52 },
 };
 
 static const struct _cffi_type_context_s _cffi_type_context = {
@@ -1614,12 +1915,12 @@ static const struct _cffi_type_context_s _cffi_type_context = {
   _cffi_struct_unions,
   NULL,  /* no enums */
   _cffi_typenames,
-  6,  /* num_globals */
+  7,  /* num_globals */
   1,  /* num_struct_unions */
   0,  /* num_enums */
   1,  /* num_typenames */
   NULL,  /* no includes */
-  40,  /* num_types */
+  55,  /* num_types */
   0,  /* flags */
 };
 
