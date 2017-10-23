@@ -495,7 +495,6 @@ void calculate_g2_ring(FILE* filehandle, long long record_type, int end_of_heade
      histogram          calculated g2 histogram
      */
     
-    
     uint64_t oflcorrection = 0;
     uint64_t timetag = 0;
     uint64_t oldest_timetag;
