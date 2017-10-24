@@ -71,46 +71,31 @@ typedef struct {
 } circular_buf_t;
 
 
-int circular_buf_reset(circular_buf_t * cbuf);
-int circular_buf_put(circular_buf_t * cbuf, uint64_t data);
-int circular_buf_oldest(circular_buf_t * cbuf, uint64_t * data);
+void circular_buf_reset(circular_buf_t * cbuf);
+void circular_buf_put(circular_buf_t * cbuf, uint64_t data);
+void circular_buf_oldest(circular_buf_t * cbuf, uint64_t * data);
 
 
-int circular_buf_reset(circular_buf_t * cbuf)
+void circular_buf_reset(circular_buf_t * cbuf)
 {
-    int r = -1;
-    
-    if(cbuf)
-    {
+    if(cbuf) {
         cbuf->head = 0;
         cbuf->count = 0;
-        r = 0;
     }
-    
-    return r;
 }
 
-int circular_buf_put(circular_buf_t * cbuf, uint64_t data)
-{
-    int r = -1;
-    
-    if(cbuf)
-    {
+void circular_buf_put(circular_buf_t * cbuf, uint64_t data)
+{   
+    if(cbuf) {
         cbuf->buffer[cbuf->head] = data;
         cbuf->head = (cbuf->head + 1) % cbuf->size;
         if(cbuf->count < cbuf->size) {
             cbuf->count = cbuf->count + 1;
         }
-        
-        r = 0;
     }
-    
-    return r;
 }
 
-int circular_buf_oldest(circular_buf_t * cbuf, uint64_t * data) {
-    int r = -1;
-    
+void circular_buf_oldest(circular_buf_t * cbuf, uint64_t * data) {
     // CAUTION: Even if the buffer is empty oldest will return whatever
     // is in buffer[0]. We do so because it is conveninet for our specific
     // application but it can be catastrophic.
@@ -122,11 +107,7 @@ int circular_buf_oldest(circular_buf_t * cbuf, uint64_t * data) {
         } else {
             *data = cbuf->buffer[cbuf->head];
         }
-        
-        r = 0;
     }
-    
-    return r;
 }
 // ============================
 // END OF CIRCULAR BUFFER
@@ -626,4 +607,5 @@ void calculate_g2_ring(FILE* filehandle, long long record_type, int end_of_heade
             }
         }
     }
+    free(cbuf.buffer);
 }
