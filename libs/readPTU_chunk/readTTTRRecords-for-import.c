@@ -507,11 +507,6 @@ void calculate_g2_fast(FILE* filehandle, long long record_type, int end_of_heade
     
     // go to the start position RecNum_start
     while(*RecNum < RecNum_stop && photon_bool){
-        //        if (*RecNum > next_print){
-        //            printf("%ld/%ld\n", *RecNum, RecNum_stop);
-        //            next_print = next_print + 1000000;
-        //        }
-        
         // FIND NEXT START PHOTON
         channel = -1;
         while(*RecNum < RecNum_stop && photon_bool==1 && channel != channel_start){
@@ -607,7 +602,7 @@ void calculate_g2_ring(FILE* filehandle, long long record_type, int end_of_heade
     photon_bool = next_photon(filehandle, record_type, RecNum, NumRecords,
                               &record_buffer, &oflcorrection, &timetag, &channel);
 
-    while(photon_bool==1){
+    while(photon_bool==1 && *RecNum < RecNum_stop){
         photon_bool = next_photon(filehandle, record_type, RecNum, NumRecords,
                                   &record_buffer, &oflcorrection, &timetag, &channel);
         
