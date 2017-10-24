@@ -344,7 +344,7 @@ int next_photon(FILE* filehandle, long long record_type, uint64_t *RecNum, uint6
         pop_record:
         do {
             record_buf_pop(buffer, timetag, channel);
-            *RecNum = *RecNum + 1;
+            *RecNum += 1;
         } while(*channel < 0 && buffer->head < RECORD_CHUNK);
 
         if (channel >= 0) {
@@ -427,7 +427,7 @@ void timetrace(FILE* filehandle, long long record_type, int end_of_header, uint6
     
     // reset file reader
     c_fseek(filehandle, end_of_header);
-    
+
     for (i = 0; i < nb_of_bins; i++)
     {
         time_vector[i] = i * time_bin_length;
@@ -463,86 +463,88 @@ void timetrace(FILE* filehandle, long long record_type, int end_of_header, uint6
     }
 }
 
-// void calculate_g2_fast(FILE* filehandle, long long record_type, int end_of_header, uint64_t *RecNum, uint64_t NumRecords, uint64_t RecNum_start, uint64_t RecNum_stop, uint64_t *time_vector, int *histogram, int nb_of_bins, int channel_start, int channel_stop)
-// {
-//     /*
-//      calculate_g2_fast() computes the g2 directly reading the measurement file. It uses a simple algorithm which stops at the first stop photon (histogram mode style). This algorithm is fast but loses some information and can exhibit an exponential decay artefact linked to the photon rates.
-//      Inputs:
-//      filehandle         FILE pointer with an open record file to read the photons
-//      record_type        record type which depends on the device which recorded the file (see constants at the beginning of file)
-//      end_of_header      offset in bytes to the beginning of the record section in the file
-//      RecNum             pointer to the index of the record being read
-//      NumRecords         total number of records
-//      RecNum_start       start of the section of records to analyse for the g2 (in terms of record index)
-//      RecNum_stop        stop of the section of records to analyse for the g2
-//      time_vector        precalculated array of times used for the x-axis of the g2 histogram. Should have nb_of_bins + 1 elements.
-//      histogram          preallocated array of zeros used for the g2 histogram. Should have nb_of_bins elements.
-//      nb_of_bins         number of bins for the histogram (should correspond to the length of the histogram array)
-//      channel_start      channel number used for start photons (sync will generally be 0)
-//      channel_stop       channel number used for stop photons (> 0, often 1)
-//      Outputs:
-//      filehandle         FILE pointer with reader at the position of last analysed record
-//      RecNum             index of last analysed record
-//      histogram          calculated g2 histogram
-//      */
+void calculate_g2_fast(FILE* filehandle, long long record_type, int end_of_header, uint64_t *RecNum, uint64_t NumRecords, uint64_t RecNum_start, uint64_t RecNum_stop, uint64_t *time_vector, int *histogram, int nb_of_bins, int channel_start, int channel_stop)
+{
+    /*
+     calculate_g2_fast() computes the g2 directly reading the measurement file. It uses a simple algorithm which stops at the first stop photon (histogram mode style). This algorithm is fast but loses some information and can exhibit an exponential decay artefact linked to the photon rates.
+     Inputs:
+     filehandle         FILE pointer with an open record file to read the photons
+     record_type        record type which depends on the device which recorded the file (see constants at the beginning of file)
+     end_of_header      offset in bytes to the beginning of the record section in the file
+     RecNum             pointer to the index of the record being read
+     NumRecords         total number of records
+     RecNum_start       start of the section of records to analyse for the g2 (in terms of record index)
+     RecNum_stop        stop of the section of records to analyse for the g2
+     time_vector        precalculated array of times used for the x-axis of the g2 histogram. Should have nb_of_bins + 1 elements.
+     histogram          preallocated array of zeros used for the g2 histogram. Should have nb_of_bins elements.
+     nb_of_bins         number of bins for the histogram (should correspond to the length of the histogram array)
+     channel_start      channel number used for start photons (sync will generally be 0)
+     channel_stop       channel number used for stop photons (> 0, often 1)
+     Outputs:
+     filehandle         FILE pointer with reader at the position of last analysed record
+     RecNum             index of last analysed record
+     histogram          calculated g2 histogram
+     */
 
-//     photon_buf_t photon_buffer;
-//     photon_buf_reset(&photon_buffer);
+    record_buf_t record_buffer;
+    record_buf_reset(&record_buffer);
     
-//     uint64_t start_time = 0;
-//     uint64_t stop_time = 0;
-//     uint64_t oflcorrection = 0;
-//     uint64_t timetag = 0;
-//     int channel = -1;
-//     size_t i = 0;
-//     uint64_t correlation_window = 0;
-//     int photon_bool = 1;
-//     //    long next_print = 0;
-//     correlation_window = time_vector[nb_of_bins];
+    uint64_t start_time = 0;
+    uint64_t stop_time = 0;
+    uint64_t oflcorrection = 0;
+    uint64_t timetag = 0;
+    int channel = -1;
+    size_t i = 0;
+    uint64_t correlation_window = 0;
+    uint64_t delta=0;
+    int photon_bool = 1;
+    //    long next_print = 0;
+    correlation_window = time_vector[nb_of_bins];
     
-//     // reset file reader and go to the start position RecNum_start
-//     c_fseek(filehandle, end_of_header + 4 * RecNum_start);
-//     *RecNum = RecNum_start;
+    // reset file reader and go to the start position RecNum_start
+    c_fseek(filehandle, end_of_header + 4 * RecNum_start);
+    *RecNum = RecNum_start;
     
-//     // go to the start position RecNum_start
-//     while(*RecNum < RecNum_stop && photon_bool){
-//         //        if (*RecNum > next_print){
-//         //            printf("%ld/%ld\n", *RecNum, RecNum_stop);
-//         //            next_print = next_print + 1000000;
-//         //        }
+    // go to the start position RecNum_start
+    while(*RecNum < RecNum_stop && photon_bool){
+        //        if (*RecNum > next_print){
+        //            printf("%ld/%ld\n", *RecNum, RecNum_stop);
+        //            next_print = next_print + 1000000;
+        //        }
         
-//         // FIND NEXT START PHOTON
-//         channel = -1;
-//         while(*RecNum < RecNum_stop && photon_bool==1 && channel != channel_start){
-//             photon_bool = next_photon(filehandle, record_type, RecNum, NumRecords, 
-//                                       &photon_buffer, &oflcorrection, &timetag, &channel);
-//         }
-//         if (*RecNum >= RecNum_stop || *RecNum >= NumRecords){
-//             break;
-//         }
-//         // found a start photon
-//         else {
-//             start_time = timetag;
-//         }
+        // FIND NEXT START PHOTON
+        channel = -1;
+        while(*RecNum < RecNum_stop && photon_bool==1 && channel != channel_start){
+            photon_bool = next_photon(filehandle, record_type, RecNum, NumRecords, 
+                                      &record_buffer, &oflcorrection, &timetag, &channel);
+        }
+        if (*RecNum >= RecNum_stop || *RecNum >= NumRecords){
+            break;
+        }
+        // found a start photon
+        else {
+            start_time = timetag;
+        }
         
-//         // FIND NEXT STOP PHOTON
-//         while (*RecNum < RecNum_stop && photon_bool==1 && channel != channel_stop) {
-//             photon_bool = next_photon(filehandle, record_type, RecNum, NumRecords, 
-//                                       &photon_buffer, &oflcorrection, &timetag, &channel);
-//         }
-//         // found a stop photon
-//         if (channel == channel_stop) {
-//             stop_time = timetag;
-//         }
+        // FIND NEXT STOP PHOTON
+        while (*RecNum < RecNum_stop && photon_bool==1 && channel != channel_stop) {
+            photon_bool = next_photon(filehandle, record_type, RecNum, NumRecords, 
+                                      &record_buffer, &oflcorrection, &timetag, &channel);
+        }
+        // found a stop photon
+        if (channel == channel_stop) {
+            stop_time = timetag;
+        }
         
-//         // ADD DELAY TO HISTOGRAM
-//         // add occurence to result histogram if the delay is in the correlation window
-//         if (stop_time - start_time < correlation_window) {
-//             i = (size_t) (stop_time - start_time) * nb_of_bins / correlation_window;
-//             histogram[i] = histogram[i] + 1;
-//         }
-//     }
-// }
+        // ADD DELAY TO HISTOGRAM
+        // add occurence to result histogram if the delay is in the correlation window
+        delta = stop_time - start_time;
+        if (delta < correlation_window) {
+            i = (uint64_t) delta * nb_of_bins / correlation_window;
+            histogram[i] = histogram[i] + 1;
+        }
+    }
+}
 
 void calculate_g2_ring(FILE* filehandle, long long record_type, int end_of_header,
                        uint64_t *RecNum, uint64_t NumRecords, uint64_t RecNum_start,

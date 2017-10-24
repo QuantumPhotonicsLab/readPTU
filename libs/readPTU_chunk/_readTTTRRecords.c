@@ -825,7 +825,7 @@ int next_photon(FILE* filehandle, long long record_type, uint64_t *RecNum, uint6
         pop_record:
         do {
             record_buf_pop(buffer, timetag, channel);
-            *RecNum = *RecNum + 1;
+            *RecNum += 1;
         } while(*channel < 0 && buffer->head < RECORD_CHUNK);
 
         if (channel >= 0) {
@@ -908,7 +908,7 @@ void timetrace(FILE* filehandle, long long record_type, int end_of_header, uint6
     
     // reset file reader
     c_fseek(filehandle, end_of_header);
-    
+
     for (i = 0; i < nb_of_bins; i++)
     {
         time_vector[i] = i * time_bin_length;
@@ -944,86 +944,88 @@ void timetrace(FILE* filehandle, long long record_type, int end_of_header, uint6
     }
 }
 
-// void calculate_g2_fast(FILE* filehandle, long long record_type, int end_of_header, uint64_t *RecNum, uint64_t NumRecords, uint64_t RecNum_start, uint64_t RecNum_stop, uint64_t *time_vector, int *histogram, int nb_of_bins, int channel_start, int channel_stop)
-// {
-//     /*
-//      calculate_g2_fast() computes the g2 directly reading the measurement file. It uses a simple algorithm which stops at the first stop photon (histogram mode style). This algorithm is fast but loses some information and can exhibit an exponential decay artefact linked to the photon rates.
-//      Inputs:
-//      filehandle         FILE pointer with an open record file to read the photons
-//      record_type        record type which depends on the device which recorded the file (see constants at the beginning of file)
-//      end_of_header      offset in bytes to the beginning of the record section in the file
-//      RecNum             pointer to the index of the record being read
-//      NumRecords         total number of records
-//      RecNum_start       start of the section of records to analyse for the g2 (in terms of record index)
-//      RecNum_stop        stop of the section of records to analyse for the g2
-//      time_vector        precalculated array of times used for the x-axis of the g2 histogram. Should have nb_of_bins + 1 elements.
-//      histogram          preallocated array of zeros used for the g2 histogram. Should have nb_of_bins elements.
-//      nb_of_bins         number of bins for the histogram (should correspond to the length of the histogram array)
-//      channel_start      channel number used for start photons (sync will generally be 0)
-//      channel_stop       channel number used for stop photons (> 0, often 1)
-//      Outputs:
-//      filehandle         FILE pointer with reader at the position of last analysed record
-//      RecNum             index of last analysed record
-//      histogram          calculated g2 histogram
-//      */
+void calculate_g2_fast(FILE* filehandle, long long record_type, int end_of_header, uint64_t *RecNum, uint64_t NumRecords, uint64_t RecNum_start, uint64_t RecNum_stop, uint64_t *time_vector, int *histogram, int nb_of_bins, int channel_start, int channel_stop)
+{
+    /*
+     calculate_g2_fast() computes the g2 directly reading the measurement file. It uses a simple algorithm which stops at the first stop photon (histogram mode style). This algorithm is fast but loses some information and can exhibit an exponential decay artefact linked to the photon rates.
+     Inputs:
+     filehandle         FILE pointer with an open record file to read the photons
+     record_type        record type which depends on the device which recorded the file (see constants at the beginning of file)
+     end_of_header      offset in bytes to the beginning of the record section in the file
+     RecNum             pointer to the index of the record being read
+     NumRecords         total number of records
+     RecNum_start       start of the section of records to analyse for the g2 (in terms of record index)
+     RecNum_stop        stop of the section of records to analyse for the g2
+     time_vector        precalculated array of times used for the x-axis of the g2 histogram. Should have nb_of_bins + 1 elements.
+     histogram          preallocated array of zeros used for the g2 histogram. Should have nb_of_bins elements.
+     nb_of_bins         number of bins for the histogram (should correspond to the length of the histogram array)
+     channel_start      channel number used for start photons (sync will generally be 0)
+     channel_stop       channel number used for stop photons (> 0, often 1)
+     Outputs:
+     filehandle         FILE pointer with reader at the position of last analysed record
+     RecNum             index of last analysed record
+     histogram          calculated g2 histogram
+     */
 
-//     photon_buf_t photon_buffer;
-//     photon_buf_reset(&photon_buffer);
+    record_buf_t record_buffer;
+    record_buf_reset(&record_buffer);
     
-//     uint64_t start_time = 0;
-//     uint64_t stop_time = 0;
-//     uint64_t oflcorrection = 0;
-//     uint64_t timetag = 0;
-//     int channel = -1;
-//     size_t i = 0;
-//     uint64_t correlation_window = 0;
-//     int photon_bool = 1;
-//     //    long next_print = 0;
-//     correlation_window = time_vector[nb_of_bins];
+    uint64_t start_time = 0;
+    uint64_t stop_time = 0;
+    uint64_t oflcorrection = 0;
+    uint64_t timetag = 0;
+    int channel = -1;
+    size_t i = 0;
+    uint64_t correlation_window = 0;
+    uint64_t delta=0;
+    int photon_bool = 1;
+    //    long next_print = 0;
+    correlation_window = time_vector[nb_of_bins];
     
-//     // reset file reader and go to the start position RecNum_start
-//     c_fseek(filehandle, end_of_header + 4 * RecNum_start);
-//     *RecNum = RecNum_start;
+    // reset file reader and go to the start position RecNum_start
+    c_fseek(filehandle, end_of_header + 4 * RecNum_start);
+    *RecNum = RecNum_start;
     
-//     // go to the start position RecNum_start
-//     while(*RecNum < RecNum_stop && photon_bool){
-//         //        if (*RecNum > next_print){
-//         //            printf("%ld/%ld\n", *RecNum, RecNum_stop);
-//         //            next_print = next_print + 1000000;
-//         //        }
+    // go to the start position RecNum_start
+    while(*RecNum < RecNum_stop && photon_bool){
+        //        if (*RecNum > next_print){
+        //            printf("%ld/%ld\n", *RecNum, RecNum_stop);
+        //            next_print = next_print + 1000000;
+        //        }
         
-//         // FIND NEXT START PHOTON
-//         channel = -1;
-//         while(*RecNum < RecNum_stop && photon_bool==1 && channel != channel_start){
-//             photon_bool = next_photon(filehandle, record_type, RecNum, NumRecords, 
-//                                       &photon_buffer, &oflcorrection, &timetag, &channel);
-//         }
-//         if (*RecNum >= RecNum_stop || *RecNum >= NumRecords){
-//             break;
-//         }
-//         // found a start photon
-//         else {
-//             start_time = timetag;
-//         }
+        // FIND NEXT START PHOTON
+        channel = -1;
+        while(*RecNum < RecNum_stop && photon_bool==1 && channel != channel_start){
+            photon_bool = next_photon(filehandle, record_type, RecNum, NumRecords, 
+                                      &record_buffer, &oflcorrection, &timetag, &channel);
+        }
+        if (*RecNum >= RecNum_stop || *RecNum >= NumRecords){
+            break;
+        }
+        // found a start photon
+        else {
+            start_time = timetag;
+        }
         
-//         // FIND NEXT STOP PHOTON
-//         while (*RecNum < RecNum_stop && photon_bool==1 && channel != channel_stop) {
-//             photon_bool = next_photon(filehandle, record_type, RecNum, NumRecords, 
-//                                       &photon_buffer, &oflcorrection, &timetag, &channel);
-//         }
-//         // found a stop photon
-//         if (channel == channel_stop) {
-//             stop_time = timetag;
-//         }
+        // FIND NEXT STOP PHOTON
+        while (*RecNum < RecNum_stop && photon_bool==1 && channel != channel_stop) {
+            photon_bool = next_photon(filehandle, record_type, RecNum, NumRecords, 
+                                      &record_buffer, &oflcorrection, &timetag, &channel);
+        }
+        // found a stop photon
+        if (channel == channel_stop) {
+            stop_time = timetag;
+        }
         
-//         // ADD DELAY TO HISTOGRAM
-//         // add occurence to result histogram if the delay is in the correlation window
-//         if (stop_time - start_time < correlation_window) {
-//             i = (size_t) (stop_time - start_time) * nb_of_bins / correlation_window;
-//             histogram[i] = histogram[i] + 1;
-//         }
-//     }
-// }
+        // ADD DELAY TO HISTOGRAM
+        // add occurence to result histogram if the delay is in the correlation window
+        delta = stop_time - start_time;
+        if (delta < correlation_window) {
+            i = (uint64_t) delta * nb_of_bins / correlation_window;
+            histogram[i] = histogram[i] + 1;
+        }
+    }
+}
 
 void calculate_g2_ring(FILE* filehandle, long long record_type, int end_of_header,
                        uint64_t *RecNum, uint64_t NumRecords, uint64_t RecNum_start,
@@ -1118,16 +1120,16 @@ void calculate_g2_ring(FILE* filehandle, long long record_type, int end_of_heade
 static void *_cffi_types[] = {
 /*  0 */ _CFFI_OP(_CFFI_OP_FUNCTION, 5), // FILE *()(int, char const *)
 /*  1 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7), // int
-/*  2 */ _CFFI_OP(_CFFI_OP_POINTER, 39), // char const *
+/*  2 */ _CFFI_OP(_CFFI_OP_POINTER, 53), // char const *
 /*  3 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
 /*  4 */ _CFFI_OP(_CFFI_OP_FUNCTION, 1), // int()(FILE *)
-/*  5 */ _CFFI_OP(_CFFI_OP_POINTER, 38), // FILE *
+/*  5 */ _CFFI_OP(_CFFI_OP_POINTER, 52), // FILE *
 /*  6 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
 /*  7 */ _CFFI_OP(_CFFI_OP_FUNCTION, 1), // int()(FILE *, long)
 /*  8 */ _CFFI_OP(_CFFI_OP_NOOP, 5),
 /*  9 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 9), // long
 /* 10 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/* 11 */ _CFFI_OP(_CFFI_OP_FUNCTION, 40), // void()(FILE *, long long, int, uint64_t *, uint64_t, uint64_t, uint64_t *, int *, uint64_t *, int)
+/* 11 */ _CFFI_OP(_CFFI_OP_FUNCTION, 54), // void()(FILE *, long long, int, uint64_t *, uint64_t, uint64_t, uint64_t *, int *, uint64_t *, int)
 /* 12 */ _CFFI_OP(_CFFI_OP_NOOP, 5),
 /* 13 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 11), // long long
 /* 14 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
@@ -1139,7 +1141,7 @@ static void *_cffi_types[] = {
 /* 20 */ _CFFI_OP(_CFFI_OP_NOOP, 15),
 /* 21 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
 /* 22 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/* 23 */ _CFFI_OP(_CFFI_OP_FUNCTION, 40), // void()(FILE *, long long, int, uint64_t *, uint64_t, uint64_t, uint64_t, uint64_t *, int *, int, int, int, int)
+/* 23 */ _CFFI_OP(_CFFI_OP_FUNCTION, 54), // void()(FILE *, long long, int, uint64_t *, uint64_t, uint64_t, uint64_t, uint64_t *, int *, int, int, int)
 /* 24 */ _CFFI_OP(_CFFI_OP_NOOP, 5),
 /* 25 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 11),
 /* 26 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
@@ -1152,11 +1154,25 @@ static void *_cffi_types[] = {
 /* 33 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
 /* 34 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
 /* 35 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
-/* 36 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
-/* 37 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/* 38 */ _CFFI_OP(_CFFI_OP_STRUCT_UNION, 0), // FILE
-/* 39 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 2), // char
-/* 40 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 0), // void
+/* 36 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
+/* 37 */ _CFFI_OP(_CFFI_OP_FUNCTION, 54), // void()(FILE *, long long, int, uint64_t *, uint64_t, uint64_t, uint64_t, uint64_t *, int *, int, int, int, int)
+/* 38 */ _CFFI_OP(_CFFI_OP_NOOP, 5),
+/* 39 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 11),
+/* 40 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
+/* 41 */ _CFFI_OP(_CFFI_OP_NOOP, 15),
+/* 42 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 24),
+/* 43 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 24),
+/* 44 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 24),
+/* 45 */ _CFFI_OP(_CFFI_OP_NOOP, 15),
+/* 46 */ _CFFI_OP(_CFFI_OP_NOOP, 19),
+/* 47 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
+/* 48 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
+/* 49 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
+/* 50 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
+/* 51 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
+/* 52 */ _CFFI_OP(_CFFI_OP_STRUCT_UNION, 0), // FILE
+/* 53 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 2), // char
+/* 54 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 0), // void
 };
 
 static int _cffi_d_c_fseek(FILE * x0, long x1)
@@ -1203,6 +1219,133 @@ _cffi_f_c_fseek(PyObject *self, PyObject *args)
 }
 #else
 #  define _cffi_f_c_fseek _cffi_d_c_fseek
+#endif
+
+static void _cffi_d_calculate_g2_fast(FILE * x0, long long x1, int x2, uint64_t * x3, uint64_t x4, uint64_t x5, uint64_t x6, uint64_t * x7, int * x8, int x9, int x10, int x11)
+{
+  calculate_g2_fast(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11);
+}
+#ifndef PYPY_VERSION
+static PyObject *
+_cffi_f_calculate_g2_fast(PyObject *self, PyObject *args)
+{
+  FILE * x0;
+  long long x1;
+  int x2;
+  uint64_t * x3;
+  uint64_t x4;
+  uint64_t x5;
+  uint64_t x6;
+  uint64_t * x7;
+  int * x8;
+  int x9;
+  int x10;
+  int x11;
+  Py_ssize_t datasize;
+  PyObject *arg0;
+  PyObject *arg1;
+  PyObject *arg2;
+  PyObject *arg3;
+  PyObject *arg4;
+  PyObject *arg5;
+  PyObject *arg6;
+  PyObject *arg7;
+  PyObject *arg8;
+  PyObject *arg9;
+  PyObject *arg10;
+  PyObject *arg11;
+
+  if (!PyArg_UnpackTuple(args, "calculate_g2_fast", 12, 12, &arg0, &arg1, &arg2, &arg3, &arg4, &arg5, &arg6, &arg7, &arg8, &arg9, &arg10, &arg11))
+    return NULL;
+
+  datasize = _cffi_prepare_pointer_call_argument(
+      _cffi_type(5), arg0, (char **)&x0);
+  if (datasize != 0) {
+    if (datasize < 0)
+      return NULL;
+    x0 = (FILE *)alloca((size_t)datasize);
+    memset((void *)x0, 0, (size_t)datasize);
+    if (_cffi_convert_array_from_object((char *)x0, _cffi_type(5), arg0) < 0)
+      return NULL;
+  }
+
+  x1 = _cffi_to_c_int(arg1, long long);
+  if (x1 == (long long)-1 && PyErr_Occurred())
+    return NULL;
+
+  x2 = _cffi_to_c_int(arg2, int);
+  if (x2 == (int)-1 && PyErr_Occurred())
+    return NULL;
+
+  datasize = _cffi_prepare_pointer_call_argument(
+      _cffi_type(15), arg3, (char **)&x3);
+  if (datasize != 0) {
+    if (datasize < 0)
+      return NULL;
+    x3 = (uint64_t *)alloca((size_t)datasize);
+    memset((void *)x3, 0, (size_t)datasize);
+    if (_cffi_convert_array_from_object((char *)x3, _cffi_type(15), arg3) < 0)
+      return NULL;
+  }
+
+  x4 = _cffi_to_c_int(arg4, uint64_t);
+  if (x4 == (uint64_t)-1 && PyErr_Occurred())
+    return NULL;
+
+  x5 = _cffi_to_c_int(arg5, uint64_t);
+  if (x5 == (uint64_t)-1 && PyErr_Occurred())
+    return NULL;
+
+  x6 = _cffi_to_c_int(arg6, uint64_t);
+  if (x6 == (uint64_t)-1 && PyErr_Occurred())
+    return NULL;
+
+  datasize = _cffi_prepare_pointer_call_argument(
+      _cffi_type(15), arg7, (char **)&x7);
+  if (datasize != 0) {
+    if (datasize < 0)
+      return NULL;
+    x7 = (uint64_t *)alloca((size_t)datasize);
+    memset((void *)x7, 0, (size_t)datasize);
+    if (_cffi_convert_array_from_object((char *)x7, _cffi_type(15), arg7) < 0)
+      return NULL;
+  }
+
+  datasize = _cffi_prepare_pointer_call_argument(
+      _cffi_type(19), arg8, (char **)&x8);
+  if (datasize != 0) {
+    if (datasize < 0)
+      return NULL;
+    x8 = (int *)alloca((size_t)datasize);
+    memset((void *)x8, 0, (size_t)datasize);
+    if (_cffi_convert_array_from_object((char *)x8, _cffi_type(19), arg8) < 0)
+      return NULL;
+  }
+
+  x9 = _cffi_to_c_int(arg9, int);
+  if (x9 == (int)-1 && PyErr_Occurred())
+    return NULL;
+
+  x10 = _cffi_to_c_int(arg10, int);
+  if (x10 == (int)-1 && PyErr_Occurred())
+    return NULL;
+
+  x11 = _cffi_to_c_int(arg11, int);
+  if (x11 == (int)-1 && PyErr_Occurred())
+    return NULL;
+
+  Py_BEGIN_ALLOW_THREADS
+  _cffi_restore_errno();
+  { calculate_g2_fast(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11); }
+  _cffi_save_errno();
+  Py_END_ALLOW_THREADS
+
+  (void)self; /* unused */
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+#else
+#  define _cffi_f_calculate_g2_fast _cffi_d_calculate_g2_fast
 #endif
 
 static void _cffi_d_calculate_g2_ring(FILE * x0, long long x1, int x2, uint64_t * x3, uint64_t x4, uint64_t x5, uint64_t x6, uint64_t * x7, int * x8, int x9, int x10, int x11, int x12)
@@ -1544,19 +1687,20 @@ _cffi_f_timetrace(PyObject *self, PyObject *args)
 
 static const struct _cffi_global_s _cffi_globals[] = {
   { "c_fseek", (void *)_cffi_f_c_fseek, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 7), (void *)_cffi_d_c_fseek },
-  { "calculate_g2_ring", (void *)_cffi_f_calculate_g2_ring, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 23), (void *)_cffi_d_calculate_g2_ring },
+  { "calculate_g2_fast", (void *)_cffi_f_calculate_g2_fast, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 23), (void *)_cffi_d_calculate_g2_fast },
+  { "calculate_g2_ring", (void *)_cffi_f_calculate_g2_ring, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 37), (void *)_cffi_d_calculate_g2_ring },
   { "fclose", (void *)_cffi_f_fclose, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_O, 4), (void *)_cffi_d_fclose },
   { "fdopen", (void *)_cffi_f_fdopen, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 0), (void *)_cffi_d_fdopen },
   { "timetrace", (void *)_cffi_f_timetrace, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 11), (void *)_cffi_d_timetrace },
 };
 
 static const struct _cffi_struct_union_s _cffi_struct_unions[] = {
-  { "_IO_FILE", 38, _CFFI_F_OPAQUE,
+  { "_IO_FILE", 52, _CFFI_F_OPAQUE,
     (size_t)-1, -1, -1, 0 /* opaque */ },
 };
 
 static const struct _cffi_typename_s _cffi_typenames[] = {
-  { "FILE", 38 },
+  { "FILE", 52 },
 };
 
 static const struct _cffi_type_context_s _cffi_type_context = {
@@ -1566,12 +1710,12 @@ static const struct _cffi_type_context_s _cffi_type_context = {
   _cffi_struct_unions,
   NULL,  /* no enums */
   _cffi_typenames,
-  5,  /* num_globals */
+  6,  /* num_globals */
   1,  /* num_struct_unions */
   0,  /* num_enums */
   1,  /* num_typenames */
   NULL,  /* no includes */
-  41,  /* num_types */
+  55,  /* num_types */
   0,  /* flags */
 };
 
