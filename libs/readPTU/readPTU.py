@@ -472,9 +472,9 @@ if __name__ == '__main__':
     g2_coincidence_window = 1e6  # in picoseconds
     g2_post_selec_ranges = [[4e5,1e6]]  # in record numbers
 
-    filename = r'/Users/garfield/Downloads/default.ptu'
+    # filename = r'/Users/garfield/Downloads/default.ptu'
 
-    # filename = r'/Users/raphaelproux/Desktop/TTTR/t2htr2a1loc2.ptu'
+    filename = r'/Users/raphaelproux/Desktop/TTTR/t2htr2a1loc2.ptu'
 
     with PTUfile(filename) as ptu_file:
         ptu_file.print_header()
