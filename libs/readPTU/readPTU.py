@@ -301,7 +301,7 @@ class PTUmeasurement():
         resolution *= 1e12 # now in picoseconds
         self.meas.reset_rec_num()
         
-        nb_of_bins = int(self.meas.acq_time / resolution) ;
+        nb_of_bins = int(self.meas.acq_time / resolution);
         c_time_vector = ffi.new("uint64_t[{}]".format(nb_of_bins))
         c_time_trace = ffi.new("int[{}]".format(nb_of_bins))
         c_rec_num_trace = ffi.new("uint64_t[{}]".format(nb_of_bins))
@@ -488,7 +488,7 @@ if __name__ == '__main__':
         pl.savetxt('timetrace.txt', pl.array([timetrace_x, timetrace_y, timetrace_recnum]).transpose(), delimiter='\t')
 
         start_time = time.time()
-        histo_x, histo_y = ptu_meas.calculate_g2(1000000,10000, post_selec_ranges=[[0,100000000]])#, fast=False)
+        histo_x, histo_y = ptu_meas.calculate_g2_ring(1000000,10000, post_selec_ranges=[[0,100000000]])  #, fast=False)
         stop_time = time.time()
         print('g2 calculation took', stop_time - start_time, 's')
 
