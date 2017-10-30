@@ -465,33 +465,40 @@ class PTUmeasurement():
         return pl.array(time_vector[:-1]), pl.array(histogram)
 
 
-def construct_postselect_vector(timetrace_x, timetrace_y, threshold):
-    if timetrace_y[0] > threshold:
-        detect_down = True
-        post_selec_ranges = [[timetrace_x[0]]]
+def construct_postselect_vector(timetrace_x, timetrace_y, threshold, above=True):
+    """Constructs a postselection vector based on a threshold condition, selecting items above or below as specified by user.
+    
+    Args:
+        timetrace_x (numpy array): vector of times, time bin start time.
+        timetrace_y (numpy array): number of photons in the time bin.
+        threshold (number): number of photons threshold used for selection.
+        above (bool, optional): if True, will return time ranges where timetrace_y > threshold. If False, will return time ranges where timetrace_y < threshold.
+    
+    Returns:
+        list: List of 2-item lists being [start, stop] times extracted from timetrace_x for each post-selected range of points.
+    """
+
+    if above:
+        select = timetrace_y > threshold
+        if timetrace_y[0] > threshold:
+            add_first_time = True
+        else:
+            add_first_time = False
     else:
-        post_selec_ranges = []
-        detect_down = False
-    for x1, x2, y1, y2 in zip(timetrace_x[0::2], timetrace_x[1::2], timetrace_y[0::2], timetrace_y[1::2]):
-        if y1 < threshold and y2 > threshold and not detect_down:  # rising edge
-            interpolated_edge_pos = int(x2 - (x2 - x1) / (y2 - y1) * (y2 - threshold))
-            post_selec_ranges.append([interpolated_edge_pos])
-            detect_down = True
-        if detect_down and y1 > threshold and y2 < threshold:
-            interpolated_edge_pos = int(x2 - (x2 - x1) / (y2 - y1) * (y2 - threshold))
-            post_selec_ranges[-1].append(interpolated_edge_pos)
-            detect_down = False
-    if detect_down:  # still waiting for a lowering edge
-        post_selec_ranges[-1].append(timetrace_x[-1])
+        select = timetrace_y < threshold
+        if timetrace_y[0] < threshold:
+            add_first_time = True
+        else:
+            add_first_time = False
 
-    if len(post_selec_ranges) > 0:
-        return post_selec_ranges
-    else:
-        print('Warning: no post-select range found.')
-        return None
-
-
-
+    nselect = ~select
+    post_selec_ranges = ((select[:-1] & nselect[1:]) | (nselect[:-1] & select[1:])).nonzero()[0]
+    if add_first_time:
+        post_selec_ranges = pl.insert(post_selec_ranges, 0, 0).astype(int)
+    if len(post_selec_ranges) % 2 != 0:  # odd length means we need to add the end time
+        post_selec_ranges = pl.append(post_selec_ranges, len(timetrace_x) - 1).astype(int)
+        
+    return post_selec_ranges.reshape((-1,2))
 
 
 if __name__ == '__main__':
