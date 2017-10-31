@@ -876,6 +876,8 @@ void timetrace(FILE* filehandle, long long record_type, int end_of_header, uint6
     }
 }
 
+
+
 void calculate_g2_fast(FILE* filehandle, long long record_type, int end_of_header, uint64_t *RecNum, uint64_t NumRecords, uint64_t RecNum_start, uint64_t RecNum_stop, uint64_t *time_vector, int *histogram, int nb_of_bins, int channel_start, int channel_stop)
 {
     /*
