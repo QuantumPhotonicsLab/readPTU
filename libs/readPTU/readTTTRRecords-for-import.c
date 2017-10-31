@@ -444,7 +444,142 @@ void timetrace(FILE* filehandle, long long record_type, int end_of_header, uint6
     }
 }
 
-
+void calculate_g2(FILE* filehandle, long long record_type, int end_of_header, uint64_t *RecNum, uint64_t NumRecords, uint64_t RecNum_start, uint64_t RecNum_stop, uint64_t *time_vector, int *histogram, int nb_of_bins, int channel_start, int channel_stop)
+{
+    /*
+     calculate_g2() computes the g2 directly reading the measurement file. It uses a more complex algorithm than calculate_g2_fast(). This function will keep all photons in memory buffers, such that each start photon will be measured in regard of all the stop photons detected in a correlation window around it. This way, the measurement does not stop at the first stop photon but will take into account longer time scales. It is therefore safer to use with high photon count rates.
+     Inputs:
+     filehandle         FILE pointer with an open record file to read the photons
+     record_type        record type which depends on the device which recorded the file (see constants at the beginning of file)
+     end_of_header      offset in bytes to the beginning of the record section in the file
+     RecNum             pointer to the index of the record being read
+     NumRecords         total number of records
+     RecNum_start       start of the section of records to analyse for the g2 (in terms of record index)
+     RecNum_stop        stop of the section of records to analyse for the g2
+     time_vector        precalculated array of times used for the x-axis of the g2 histogram. Should have nb_of_bins + 1 elements.
+     histogram          preallocated array of zeros used for the g2 histogram. Should have nb_of_bins elements.
+     nb_of_bins         number of bins for the histogram (should correspond to the length of the histogram array)
+     channel_start      channel number used for start photons (sync will generally be 0)
+     channel_stop       channel number used for stop photons (> 0, often 1)
+     Outputs:
+     filehandle         FILE pointer with reader at the position of last analysed record
+     RecNum             index of last analysed record
+     histogram          calculated g2 histogram
+     */
+    
+    node_t* start_buff_head = NULL;
+    node_t* stop_buff_head = NULL;
+    int start_buff_length = 0;
+    int stop_buff_length = 0;
+    node_t* stop_corr_buff_head = NULL;
+    int stop_corr_buff_length = 0;
+    node_t* current = NULL;
+    uint64_t correlation_window_end = 0;
+    uint64_t start_time = 0;
+    uint64_t oflcorrection = 0;
+    uint64_t timetag = 0;
+    int channel = -1;
+    uint64_t i = 0;
+    uint64_t correlation_window = 0;
+    //    long next_print = 0;
+    correlation_window = time_vector[nb_of_bins];
+    
+    // First item in the chained lists will be kept as anchor and only the 'next' items will contain timetags.
+    // This avoids emptying totally the list and having to recreate it when starting to fill it again.
+    head_init(&start_buff_head, &start_buff_length);
+    head_init(&stop_buff_head, &stop_buff_length);
+    head_init(&stop_corr_buff_head, &stop_corr_buff_length);
+    
+    /*
+     This algorithm implies using 3 buffers:
+     start_buff_head      : the start photons buffer, where all unused start photons go (to be used later)
+     stop_buff_head       : the stop photons buffer, where all unused stop photons go (to be used later)
+     stop_corr_buff_head  : the correlation stop photons buffer. This buffer contains all the stop photons which fit in a correlation window around the selected start photon. For each new start photon, it needs to be modified removing the old photons which do not fit anymore in the correlation window and adding the new ones which now fit in the correlation window.
+     
+     Note that this algorithm supposes the list of photons to be ordered chronologically.
+     */
+    
+    // reset file reader and go to the start position RecNum_start
+    c_fseek(filehandle, end_of_header + 4 * RecNum_start);
+    *RecNum = RecNum_start;
+    
+    // while there are still unread photons in the file or unused start photons in the buffer
+    while((*RecNum < RecNum_stop && *RecNum < NumRecords) || start_buff_length > 0){
+        //        if (*RecNum > next_print){
+        //            printf("%ld/%ld\n", *RecNum, RecNum_stop);
+        //            next_print = next_print + 1000000;
+        //        }
+        
+        // FIND NEXT START PHOTON
+        // first, take first start photon in buffer
+        if(start_buff_length > 0){
+            start_time = pop(start_buff_head, &start_buff_length);
+        }
+        // if start buffer is empty, read photons until a start photon is found, and feed stop buffer in the process
+        else {
+            channel = -1;
+            while(channel != channel_start && (*RecNum < RecNum_stop && *RecNum < NumRecords)){
+                next_photon(filehandle, record_type, RecNum, NumRecords, &oflcorrection, &timetag, &channel);
+                if (channel == channel_stop){ // store in stop photons buffer
+                    push(stop_buff_head, timetag, &stop_buff_length);
+                }
+                else { // channel 0
+                    start_time = timetag;
+                }
+            }
+            if (channel != channel_start && (*RecNum >= RecNum_stop || *RecNum >= NumRecords)) {
+                break;
+            }
+        }
+        correlation_window_end = start_time + correlation_window;
+        
+        // FIND ALL STOP PHOTONS IN CORRELATION WINDOW
+        // complete stop photons array with new stop photons from buffer fitting in correlation window
+        while(stop_buff_length > 0 && stop_buff_head->next->val < correlation_window_end) {
+            push(stop_corr_buff_head, pop(stop_buff_head, &stop_buff_length), &stop_corr_buff_length);
+        }
+        
+        // if stop buffer is empty, read photons until the time gets out of the correlation window, and feed start buffer and the stop photons array in the process
+        if (stop_buff_length == 0) {
+            while (timetag < correlation_window_end && (*RecNum < RecNum_stop && *RecNum < NumRecords)) {
+                next_photon(filehandle, record_type, RecNum, NumRecords, &oflcorrection, &timetag, &channel);
+                // start photon -> store in start photon buffer (to be used later)
+                if (channel == channel_start) {
+                    push(start_buff_head, timetag, &start_buff_length);
+                }
+                // stop photon
+                else {
+                    // qualifies in correlation window -> store in correlation window stop buffer
+                    if (timetag < correlation_window_end) {
+                        push(stop_corr_buff_head, timetag, &stop_corr_buff_length);
+                    }
+                    // doesn't qualify -> store in stop photon buffer (to be used later)
+                    else {
+                        push(stop_buff_head, timetag, &stop_buff_length);
+                    }
+                }
+            }
+        }
+        // remove stop photons which are out of the correlation window (pop)
+        for(i = 0; i < (uint64_t) stop_corr_buff_length; i++) {
+            if(stop_corr_buff_head->next->val < start_time) {
+                pop(stop_corr_buff_head, &stop_corr_buff_length);
+            }
+            else {
+                break;
+            }
+        }
+        // perform a histogram of the stop times - start time and add it to the main histogram result
+        current = stop_corr_buff_head->next;
+        while(current != NULL) {
+            if (current->val - start_time < correlation_window) {
+                i = (uint64_t) (current->val - start_time) * nb_of_bins / correlation_window;
+                histogram[i] = histogram[i] + 1;
+            }
+            current = current->next;
+        }
+    }
+}
 
 void calculate_g2_fast(FILE* filehandle, long long record_type, int end_of_header, uint64_t *RecNum, uint64_t NumRecords, uint64_t RecNum_start, uint64_t RecNum_stop, uint64_t *time_vector, int *histogram, int nb_of_bins, int channel_start, int channel_stop)
 {
