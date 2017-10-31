@@ -24,7 +24,7 @@ import struct
 import mmap
 import time
 import collections as coll
-from _readTTTRRecords import ffi, lib
+from analysis.libs.readPTU._readTTTRRecords import ffi, lib
 
 
 class PTUfile():
