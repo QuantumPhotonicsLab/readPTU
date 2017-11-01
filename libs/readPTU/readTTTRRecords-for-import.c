@@ -113,6 +113,63 @@ void circular_buf_oldest(circular_buf_t * cbuf, uint64_t * data) {
 // END OF CIRCULAR BUFFER
 // ============================
 
+
+// ====================================================================
+// CHAINED LIST BUFFER Structure for use with the dummy g2 algorithm (calculate_g2)
+// ====================================================================
+
+// this 'node' structure is a chained list to be used with the buffers. It is easy to add an item at the end and read+remove an item at the beginning (see the three functions below).
+typedef struct node {
+    uint64_t val;
+    struct node * next;
+} node_t;
+
+void head_init(node_t** head, int* length) {
+    // initialize a chained list with value 0 and length 0.
+    *head = malloc(sizeof(node_t));
+    (*head)->val = 0;
+    (*head)->next = NULL;
+    *length = 0;
+}
+
+void push(node_t * head, uint64_t val, int* length) {
+    // add an item at the end of the list
+    node_t * current = head;
+    while (current->next != NULL) {
+        current = current->next;
+    }
+    
+    // now we can add a new variable
+    current->next = malloc(sizeof(node_t));
+    current->next->val = val;
+    current->next->next = NULL;
+    *length = *length + 1;
+}
+
+uint64_t pop(node_t * head, int* length) {
+    // remove the first info item (second in the list) from the list, returning its value
+    // remember that, for simplicity, we keep the very first item of the list alive so we don't need to recreate one each time the list becomes empty.
+    uint64_t retval = 0;
+    node_t * next_node = NULL;
+    
+    if (head->next == NULL) {
+        return 0;
+    }
+    
+    next_node = head->next->next;
+    retval = head->next->val;
+    free(head->next);
+    head->next = next_node;
+    *length = *length - 1;
+    
+    return retval;
+}
+
+// ============================
+// END OF DUMMY G2 BUFFER
+// ============================
+
+
 int c_fseek(FILE *filehandle, long int offset)
 {
     return fseek(filehandle, offset, SEEK_SET);
@@ -367,6 +424,9 @@ int next_photon(FILE* filehandle, long long record_type, uint64_t *RecNum, uint6
             }
             goto pop_record;
         }
+        else {
+            *RecNum = NumRecords - 1;  // for algorithms detecting end of file using RecNum
+        }
         return 0; // if we didn't had enough records to replenish
                   // the buffer we are done.
     }
@@ -403,7 +463,7 @@ void timetrace(FILE* filehandle, long long record_type, int end_of_header, uint6
     int channel = -1;
     uint64_t end_of_bin = 0;
     int add_photon_to_next_bin = 0;
-    size_t i = 0;
+    int i = 0;
     int photon_bool = 1;
     
     // reset file reader
@@ -467,6 +527,9 @@ void calculate_g2(FILE* filehandle, long long record_type, int end_of_header, ui
      histogram          calculated g2 histogram
      */
     
+    record_buf_t record_buffer;
+    record_buf_reset(&record_buffer);
+
     node_t* start_buff_head = NULL;
     node_t* stop_buff_head = NULL;
     int start_buff_length = 0;
@@ -519,7 +582,7 @@ void calculate_g2(FILE* filehandle, long long record_type, int end_of_header, ui
         else {
             channel = -1;
             while(channel != channel_start && (*RecNum < RecNum_stop && *RecNum < NumRecords)){
-                next_photon(filehandle, record_type, RecNum, NumRecords, &oflcorrection, &timetag, &channel);
+                next_photon(filehandle, record_type, RecNum, NumRecords, &record_buffer, &oflcorrection, &timetag, &channel);
                 if (channel == channel_stop){ // store in stop photons buffer
                     push(stop_buff_head, timetag, &stop_buff_length);
                 }
@@ -542,7 +605,7 @@ void calculate_g2(FILE* filehandle, long long record_type, int end_of_header, ui
         // if stop buffer is empty, read photons until the time gets out of the correlation window, and feed start buffer and the stop photons array in the process
         if (stop_buff_length == 0) {
             while (timetag < correlation_window_end && (*RecNum < RecNum_stop && *RecNum < NumRecords)) {
-                next_photon(filehandle, record_type, RecNum, NumRecords, &oflcorrection, &timetag, &channel);
+                next_photon(filehandle, record_type, RecNum, NumRecords, &record_buffer, &oflcorrection, &timetag, &channel);
                 // start photon -> store in start photon buffer (to be used later)
                 if (channel == channel_start) {
                     push(start_buff_head, timetag, &start_buff_length);
