@@ -250,8 +250,7 @@ class PTUfile():
             endline = '\n'
             if tag['type'] == 'tyAnsiString':
                 endline = tag['data'] + '\n'
-            print((line % value_fmt).format(key, tag['value'], tag['idx'], tag['type']), 
-                  end=endline)
+            print((line % value_fmt).format(key, tag['value'], tag['idx'], tag['type'],end=endline))
             
     def reset_rec_num(self, at=None):
         """
@@ -302,7 +301,7 @@ class PTUmeasurement():
         resolution *= 1e12 # now in picoseconds
         self.meas.reset_rec_num()
         
-        nb_of_bins = int(self.meas.acq_time / resolution) ;
+        nb_of_bins = int(self.meas.acq_time / resolution);
         c_time_vector = ffi.new("uint64_t[{}]".format(nb_of_bins))
         c_time_trace = ffi.new("int[{}]".format(nb_of_bins))
         c_rec_num_trace = ffi.new("uint64_t[{}]".format(nb_of_bins))
@@ -324,7 +323,7 @@ class PTUmeasurement():
 
         return pl.array(time_vector), pl.array(time_trace), pl.array(rec_num_trace)
 
-    def calculate_g2(self, correlation_window, resolution, post_selec_ranges=None, channel_start=0, channel_stop=1, fast=True):
+    def calculate_g2(self, correlation_window, resolution, post_selec_ranges=None, channel_start=0, channel_stop=1, mode='ring', buffer_size=2**5):
         """
         Returns the g2 calculated from the file, given the start and stop channels and the record number range to analyse (which allows post-selection)
 
@@ -344,8 +343,10 @@ class PTUmeasurement():
             2-tuple: numpy array vector of times (beginning of each time-bin), 
                      numpy array vector of histogram (number of start-stop photon couples per delay time bin)
         """
-        if fast:
+        if mode == 'fast':
             calc_g2 = lib.calculate_g2_fast
+        elif mode == 'ring':
+            calc_g2 = lib.calculate_g2_ring
         else:
             calc_g2 = lib.calculate_g2
 
@@ -369,19 +370,24 @@ class PTUmeasurement():
             for i in range(nb_of_bins):
                 c_histogram[i] = 0
 
-#            print(nb_of_bins)
-            calc_g2(self.meas.c_filehandle,
-                    self.meas.rec_type[self.meas.record_type],
-                    self.meas.end_header_offset,
-                    self.meas.c_rec_num,
-                    self.meas.num_records,
-                    post_selec_range[0],
-                    post_selec_range[1],
-                    c_time_vector,
-                    c_histogram,
-                    nb_of_bins,
-                    channel_start,
-                    channel_stop)
+            g2_arguments = [self.meas.c_filehandle,
+                            self.meas.rec_type[self.meas.record_type],
+                            self.meas.end_header_offset,
+                            self.meas.c_rec_num,
+                            self.meas.num_records,
+                            post_selec_range[0],
+                            post_selec_range[1],
+                            c_time_vector,
+                            c_histogram,
+                            nb_of_bins,
+                            channel_start,
+                            channel_stop]
+
+            if mode == 'ring':
+                g2_arguments.append(buffer_size)
+
+            # CALCULATE!!!
+            calc_g2(*g2_arguments)
 
             for i in range(nb_of_bins):
                 histogram[i] += c_histogram[i]
@@ -390,79 +396,41 @@ class PTUmeasurement():
 
         return pl.array(time_vector[:-1]), pl.array(histogram)
 
-    def calculate_g2_ring(self, correlation_window, resolution,
-                          post_selec_ranges=None, channel_start=0,
-                          channel_stop=1, buffer_size=2**10):
-        """
-        Return g2 using ring buffer algorithm.
 
-        Calculated from the file, given the start and stop channels and the
-        record number range to analyse (which allows post-selection)
+def construct_postselect_vector(timetrace_x, timetrace_y, threshold, above=True):
+    """Constructs a postselection vector based on a threshold condition, selecting items above or below as specified by user.
+    
+    Args:
+        timetrace_x (numpy array): vector of times, time bin start time.
+        timetrace_y (numpy array): number of photons in the time bin.
+        threshold (number): number of photons threshold used for selection.
+        above (bool, optional): if True, will return time ranges where timetrace_y > threshold. If False, will return time ranges where timetrace_y < threshold.
+    
+    Returns:
+        list: List of 2-item lists being [start, stop] times extracted from timetrace_x for each post-selected range of points.
+    """
 
-        Args:
-            correlation_window (int): correlation window length in number of
-                global resolutions (typically picoseconds)
-            resolution (int): length of one time bin in number of global
-                resolutions (typically picoseconds)
-            post_selec_ranges (list, optional): 2 levels list (eg [[0,100]]).
-                Each element of the first level is a 2-element list with a
-                start record number and a stop record number. By default,
-                will take all the measurement (post_selec_ranges=None)
-            channel_start (int, optional): channel number of the start photons (default 0, sync)
-            channel_stop (int, optional): channel number of the stop photons (default 1)
-            fast (bool, optional): in fast mode (default, fast=True), the g2 is
-                calculated using subsequent pairs of start-stop photons reading
-                them chronologically along the file (start-stop -> start-stop -> etc.) and discarding other photons. This algorithm will produce an 
-                exponential decay artefact on long time scales or with high photon rates. In not fast mode (fast=False), the g2 is calculated 
-                considering all start-stop photon combinations, therefore not exhibiting any artefact.
+    if above:
+        select = timetrace_y > threshold
+        if timetrace_y[0] > threshold:
+            add_first_time = True
+        else:
+            add_first_time = False
+    else:
+        select = timetrace_y < threshold
+        if timetrace_y[0] < threshold:
+            add_first_time = True
+        else:
+            add_first_time = False
 
-        Returns:
-            2-tuple: numpy array vector of times (beginning of each time-bin),
-                     numpy array vector of histogram (number of start-stop photon couples per delay time bin)
-        """
-        calc_g2 = lib.calculate_g2_ring
-
-        nb_of_bins = int(pl.floor(float(correlation_window) / resolution))
-        histogram = pl.zeros(nb_of_bins)
-
-        if post_selec_ranges is None:
-            post_selec_ranges = [[0, self.meas.num_records]]
-
-        for post_selec_range in post_selec_ranges:
-            if post_selec_range[1] > self.meas.num_records:
-                post_selec_range[1] = self.meas.num_records
-
-            print(post_selec_range)
-
-            c_time_vector = ffi.new("uint64_t[{}]".format(nb_of_bins + 1))
-            for i in range(nb_of_bins + 1):
-                c_time_vector[i] = i * resolution
-
-            c_histogram = ffi.new("int[{}]".format(nb_of_bins))
-            for i in range(nb_of_bins):
-                c_histogram[i] = 0
-
-#            print(nb_of_bins)
-            calc_g2(self.meas.c_filehandle,
-                    self.meas.rec_type[self.meas.record_type],
-                    self.meas.end_header_offset,
-                    self.meas.c_rec_num,
-                    self.meas.num_records,
-                    post_selec_range[0],
-                    post_selec_range[1],
-                    c_time_vector,
-                    c_histogram,
-                    nb_of_bins,
-                    channel_start,
-                    channel_stop,
-                    buffer_size)
-
-            for i in range(nb_of_bins):
-                histogram[i] += c_histogram[i]
-
-        time_vector = [time for time in c_time_vector]
-
-        return pl.array(time_vector[:-1]), pl.array(histogram)
+    nselect = ~select
+    post_selec_ranges = ((select[:-1] & nselect[1:]) | (nselect[:-1] & select[1:])).nonzero()[0]
+    if add_first_time:
+        post_selec_ranges = pl.insert(post_selec_ranges, 0, 0).astype(int)
+    if len(post_selec_ranges) % 2 != 0:  # odd length means we need to add the end time
+        post_selec_ranges = pl.append(post_selec_ranges, len(timetrace_x) - 1).astype(int)
+        
+    return post_selec_ranges.reshape((-1,2))
 
 
 def construct_postselect_vector(timetrace_x, timetrace_y, threshold, above=True):
@@ -509,9 +477,9 @@ if __name__ == '__main__':
     g2_coincidence_window = 1e6  # in picoseconds
     g2_post_selec_ranges = [[4e5,1e6]]  # in record numbers
 
-    filename = r'C:\Users\QPL\Desktop\temp_measurements\default.ptu'
+    # filename = r'/Users/garfield/Downloads/default.ptu'
 
-    # filename = r'/Users/raphaelproux/Desktop/TTTR/t2htr2a1loc2.ptu'
+    filename = r'/Users/raphaelproux/Desktop/TTTR/t2htr2a1loc2.ptu'
 
     with PTUfile(filename) as ptu_file:
         ptu_file.print_header()
