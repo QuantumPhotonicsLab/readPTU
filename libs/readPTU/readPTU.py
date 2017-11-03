@@ -298,7 +298,8 @@ class PTUmeasurement():
         Returns:
             3-tuple: numpy array vector of times, vector of intensity per bin, vector of record numbers locating the end of each bin in the file.
         """
-        resolution *= 1e12 # now in picoseconds
+
+        resolution = int(float(resolution) / self.meas.globres) # now in "timetag unit" (number of globres, globres is in seconds)
         self.meas.reset_rec_num()
         
         nb_of_bins = int(self.meas.acq_time / resolution);
@@ -317,7 +318,7 @@ class PTUmeasurement():
                       c_rec_num_trace,
                       nb_of_bins)
 
-        time_vector = [element for element in c_time_vector]
+        time_vector = [element * self.meas.globres for element in c_time_vector]
         time_trace = [element for element in c_time_trace]
         rec_num_trace = [element for element in c_rec_num_trace]
 
@@ -328,8 +329,8 @@ class PTUmeasurement():
         Returns the g2 calculated from the file, given the start and stop channels and the record number range to analyse (which allows post-selection)
 
         Args:
-            correlation_window (int): correlation window length in number of global resolutions (typically picoseconds)
-            resolution (int): length of one time bin in number of global resolutions (typically picoseconds)
+            correlation_window (int): correlation window length in seconds
+            resolution (int): length of one time bin in seconds
             post_selec_ranges (list, optional): 2 levels list (eg [[0,100]]). Each element of the first level is a 2-element list 
                 with a start record number and a stop record number. By default, will take all the measurement (post_selec_ranges=None)
             channel_start (int, optional): channel number of the start photons (default 0, sync)
@@ -349,6 +350,9 @@ class PTUmeasurement():
             calc_g2 = lib.calculate_g2_ring
         else:
             calc_g2 = lib.calculate_g2
+
+        resolution = int(float(resolution) / self.meas.globres)
+        correlation_window = int(float(correlation_window) / self.meas.globres)
 
         nb_of_bins = int(pl.floor(float(correlation_window) / resolution))
         histogram = pl.zeros(nb_of_bins)
@@ -397,17 +401,18 @@ class PTUmeasurement():
         return pl.array(time_vector[:-1]), pl.array(histogram)
 
 
-def construct_postselect_vector(timetrace_x, timetrace_y, threshold, above=True):
+def construct_postselect_vector(timetrace_y, timetrace_recnum, threshold, above=True):
     """Constructs a postselection vector based on a threshold condition, selecting items above or below as specified by user.
     
     Args:
-        timetrace_x (numpy array): vector of times, time bin start time.
         timetrace_y (numpy array): number of photons in the time bin.
+        timetrace_recnum (numpy array): array of record numbers corresponding to timebin start (for each time bin of the time trace)
         threshold (number): number of photons threshold used for selection.
         above (bool, optional): if True, will return time ranges where timetrace_y > threshold. If False, will return time ranges where timetrace_y < threshold.
     
     Returns:
-        list: List of 2-item lists being [start, stop] times extracted from timetrace_x for each post-selected range of points.
+        (list, list): first: List of 2-item lists being [start_index, stop_index] array indices in timetrace_y for each post-selected range of points.
+                      second: corresponding record numbers allowing for direct use as post-selection array in the calculate_g2() function.
     """
 
     if above:
@@ -429,44 +434,12 @@ def construct_postselect_vector(timetrace_x, timetrace_y, threshold, above=True)
         post_selec_ranges = pl.insert(post_selec_ranges, 0, 0).astype(int)
     if len(post_selec_ranges) % 2 != 0:  # odd length means we need to add the end time
         post_selec_ranges = pl.append(post_selec_ranges, len(timetrace_x) - 1).astype(int)
-        
-    return post_selec_ranges.reshape((-1,2))
-
-
-def construct_postselect_vector(timetrace_x, timetrace_y, threshold, above=True):
-    """Constructs a postselection vector based on a threshold condition, selecting items above or below as specified by user.
     
-    Args:
-        timetrace_x (numpy array): vector of times, time bin start time.
-        timetrace_y (numpy array): number of photons in the time bin.
-        threshold (number): number of photons threshold used for selection.
-        above (bool, optional): if True, will return time ranges where timetrace_y > threshold. If False, will return time ranges where timetrace_y < threshold.
-    
-    Returns:
-        list: List of 2-item lists being [start, stop] times extracted from timetrace_x for each post-selected range of points.
-    """
+    post_selec_ranges = post_selec_ranges.reshape((-1,2))
+    recnum_post_selec_ranges = [[timetrace_recnum[post_selec_range[0]], timetrace_recnum[post_selec_range[1]]] for post_selec_range in post_selec_ranges]
 
-    if above:
-        select = timetrace_y > threshold
-        if timetrace_y[0] > threshold:
-            add_first_time = True
-        else:
-            add_first_time = False
-    else:
-        select = timetrace_y < threshold
-        if timetrace_y[0] < threshold:
-            add_first_time = True
-        else:
-            add_first_time = False
+    return post_selec_ranges, recnum_post_selec_ranges
 
-    nselect = ~select
-    post_selec_ranges = ((select[:-1] & nselect[1:]) | (nselect[:-1] & select[1:])).nonzero()[0]
-    if add_first_time:
-        post_selec_ranges = pl.insert(post_selec_ranges, 0, 0).astype(int)
-    if len(post_selec_ranges) % 2 != 0:  # odd length means we need to add the end time
-        post_selec_ranges = pl.append(post_selec_ranges, len(timetrace_x) - 1).astype(int)
-        
-    return post_selec_ranges.reshape((-1,2))
 
 
 if __name__ == '__main__':
@@ -493,7 +466,7 @@ if __name__ == '__main__':
         pl.savetxt('timetrace.txt', pl.array([timetrace_x, timetrace_y, timetrace_recnum]).transpose(), delimiter='\t')
 
         start_time = time.time()
-        histo_x, histo_y = ptu_meas.calculate_g2(1000000,10000, post_selec_ranges=[[0,100000000]])  #, fast=False)
+        histo_x, histo_y = ptu_meas.calculate_g2(1000000,10000, post_selec_ranges=g2_post_selec_ranges)  #, fast=False)
         stop_time = time.time()
         print('g2 calculation took', stop_time - start_time, 's')
 
