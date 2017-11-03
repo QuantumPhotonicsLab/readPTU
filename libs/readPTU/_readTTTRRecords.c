@@ -602,7 +602,7 @@ uint64_t pop(node_t * head, int* length) {
 // END OF DUMMY G2 BUFFER
 // ============================
 
-typedef void (*recordParser)(uint32_t, record_buf_t*, uint64_t*);
+typedef void (*recordParser)(uint32_t*, record_buf_t*, uint64_t*);
 
 
 int c_fseek(FILE *filehandle, long int offset)
@@ -615,14 +615,14 @@ void chunk_fread(FILE* filehandle, recordParser parser, record_buf_t *buffer,  u
     uint32_t TTTRRecord[RECORD_CHUNK];
     fread(TTTRRecord, RECORD_CHUNK, sizeof(uint32_t), filehandle);
 
-    for(size_t i = 0; i < RECORD_CHUNK; i++) {
+    for(uint32_t i = 0; i < RECORD_CHUNK; i++) {
         // T2Rec.allbits = TTTRRecord[i];
-        (*parser)(TTTRRecord[i], buffer, oflcorrection);
+        (*parser)(&(TTTRRecord[i]), buffer, oflcorrection);
     }
 }
 
 
-void ParsePHT2(uint32_t record ,record_buf_t *buffer,  uint64_t *oflcorrection)
+void ParsePHT2(uint32_t *record ,record_buf_t *buffer,  uint64_t *oflcorrection)
 {
     /*
      ProcessPHT2() reads the next records of a file until it finds a photon, and then returns.
@@ -654,7 +654,7 @@ void ParsePHT2(uint32_t record ,record_buf_t *buffer,  uint64_t *oflcorrection)
     } Record;
     unsigned int markers;
 
-    Record.allbits = record;
+    Record.allbits = *record;
     
     if(Record.bits.channel == 0xF) //this means we have a special record
     {
@@ -689,7 +689,7 @@ void ParsePHT2(uint32_t record ,record_buf_t *buffer,  uint64_t *oflcorrection)
     }
 }
 
-void ParseHHT2_HH1(uint32_t record, record_buf_t *buffer,  uint64_t *oflcorrection)
+void ParseHHT2_HH1(uint32_t *record, record_buf_t *buffer,  uint64_t *oflcorrection)
 {
     /*
      ProcessHHT2() reads the next records of a file until it finds a photon, and then returns.
@@ -718,7 +718,7 @@ void ParseHHT2_HH1(uint32_t record, record_buf_t *buffer,  uint64_t *oflcorrecti
         } bits;
     } T2Rec;
 
-    T2Rec.allbits = record;
+    T2Rec.allbits = *record;
     
     if(T2Rec.bits.special==1)
     {
@@ -750,7 +750,7 @@ void ParseHHT2_HH1(uint32_t record, record_buf_t *buffer,  uint64_t *oflcorrecti
     }
 }
 
-void ParseHHT2_HH2(uint32_t record, record_buf_t *buffer,  uint64_t *oflcorrection)
+void ParseHHT2_HH2(uint32_t *record, record_buf_t *buffer,  uint64_t *oflcorrection)
 {
     /*
      ProcessHHT2() reads the next records of a file until it finds a photon, and then returns.
@@ -779,7 +779,7 @@ void ParseHHT2_HH2(uint32_t record, record_buf_t *buffer,  uint64_t *oflcorrecti
         } bits;
     } T2Rec;
 
-    T2Rec.allbits = record;
+    T2Rec.allbits = *record;
     
     if(T2Rec.bits.special==1)
     {
