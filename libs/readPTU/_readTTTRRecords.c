@@ -8,7 +8,7 @@
    the same works for the other two macros.  Py_DEBUG implies them,
    but not the other way around.
 */
-#if !defined(_CFFI_USE_EMBEDDING) && !defined(Py_LIMITED_API)
+#ifndef _CFFI_USE_EMBEDDING
 #  include <pyconfig.h>
 #  if !defined(Py_DEBUG) && !defined(Py_TRACE_REFS) && !defined(Py_REF_DEBUG)
 #    define Py_LIMITED_API
@@ -101,12 +101,8 @@ typedef void *_cffi_opcode_t;
 #define _CFFI_PRIM_UINT_FAST64  45
 #define _CFFI_PRIM_INTMAX       46
 #define _CFFI_PRIM_UINTMAX      47
-#define _CFFI_PRIM_FLOATCOMPLEX 48
-#define _CFFI_PRIM_DOUBLECOMPLEX 49
-#define _CFFI_PRIM_CHAR16       50
-#define _CFFI_PRIM_CHAR32       51
 
-#define _CFFI__NUM_PRIM         52
+#define _CFFI__NUM_PRIM         48
 #define _CFFI__UNKNOWN_PRIM           (-1)
 #define _CFFI__UNKNOWN_FLOAT_PRIM     (-2)
 #define _CFFI__UNKNOWN_LONG_DOUBLE    (-3)
@@ -275,7 +271,6 @@ static int search_in_struct_unions(const struct _cffi_type_context_s *ctx,
 #define _cffi_from_c_ulong PyLong_FromUnsignedLong
 #define _cffi_from_c_longlong PyLong_FromLongLong
 #define _cffi_from_c_ulonglong PyLong_FromUnsignedLongLong
-#define _cffi_from_c__Bool PyBool_FromLong
 
 #define _cffi_to_c_double PyFloat_AsDouble
 #define _cffi_to_c_float PyFloat_AsDouble
@@ -340,9 +335,9 @@ static int search_in_struct_unions(const struct _cffi_type_context_s *ctx,
 #define _cffi_from_c_struct                                              \
     ((PyObject *(*)(char *, struct _cffi_ctypedescr *))_cffi_exports[18])
 #define _cffi_to_c_wchar_t                                               \
-    ((_cffi_wchar_t(*)(PyObject *))_cffi_exports[19])
+    ((wchar_t(*)(PyObject *))_cffi_exports[19])
 #define _cffi_from_c_wchar_t                                             \
-    ((PyObject *(*)(_cffi_wchar_t))_cffi_exports[20])
+    ((PyObject *(*)(wchar_t))_cffi_exports[20])
 #define _cffi_to_c_long_double                                           \
     ((long double(*)(PyObject *))_cffi_exports[21])
 #define _cffi_to_c__Bool                                                 \
@@ -355,11 +350,7 @@ static int search_in_struct_unions(const struct _cffi_type_context_s *ctx,
 #define _CFFI_CPIDX  25
 #define _cffi_call_python                                                \
     ((void(*)(struct _cffi_externpy_s *, char *))_cffi_exports[_CFFI_CPIDX])
-#define _cffi_to_c_wchar3216_t                                           \
-    ((int(*)(PyObject *))_cffi_exports[26])
-#define _cffi_from_c_wchar3216_t                                         \
-    ((PyObject *(*)(int))_cffi_exports[27])
-#define _CFFI_NUM_EXPORTS 28
+#define _CFFI_NUM_EXPORTS 26
 
 struct _cffi_ctypedescr;
 
@@ -399,46 +390,6 @@ static PyObject *_cffi_init(const char *module_name, Py_ssize_t version,
     Py_XDECREF(module);
     return NULL;
 }
-
-
-#ifdef HAVE_WCHAR_H
-typedef wchar_t _cffi_wchar_t;
-#else
-typedef uint16_t _cffi_wchar_t;   /* same random pick as _cffi_backend.c */
-#endif
-
-_CFFI_UNUSED_FN static uint16_t _cffi_to_c_char16_t(PyObject *o)
-{
-    if (sizeof(_cffi_wchar_t) == 2)
-        return (uint16_t)_cffi_to_c_wchar_t(o);
-    else
-        return (uint16_t)_cffi_to_c_wchar3216_t(o);
-}
-
-_CFFI_UNUSED_FN static PyObject *_cffi_from_c_char16_t(uint16_t x)
-{
-    if (sizeof(_cffi_wchar_t) == 2)
-        return _cffi_from_c_wchar_t((_cffi_wchar_t)x);
-    else
-        return _cffi_from_c_wchar3216_t((int)x);
-}
-
-_CFFI_UNUSED_FN static int _cffi_to_c_char32_t(PyObject *o)
-{
-    if (sizeof(_cffi_wchar_t) == 4)
-        return (int)_cffi_to_c_wchar_t(o);
-    else
-        return (int)_cffi_to_c_wchar3216_t(o);
-}
-
-_CFFI_UNUSED_FN static PyObject *_cffi_from_c_char32_t(int x)
-{
-    if (sizeof(_cffi_wchar_t) == 4)
-        return _cffi_from_c_wchar_t((_cffi_wchar_t)x);
-    else
-        return _cffi_from_c_wchar3216_t(x);
-}
-
 
 /**********  end CPython-specific section  **********/
 #else
@@ -867,214 +818,6 @@ void ParseHHT2_HH2(uint32_t record, record_buf_t *buffer,  uint64_t *oflcorrecti
     }
 }
 
-
-// void ProcessPHT2(FILE* filehandle, record_buf_t *buffer,  uint64_t *oflcorrection)
-// {
-//     /*
-//      ProcessPHT2() reads the next records of a file until it finds a photon, and then returns.
-//      Inputs:
-//          filehandle         FILE pointer with an open record file to read the photons
-//          oflcorrection      pointer to an unsigned integer 64 bits. Will record the time correction in the timetags due to overflow (see output for details).
-//          buffer             buffer from which to read the next record (file chunk read buffer)
-//      Outputs:
-//          filehandle         FILE pointer with reader at the position of last analysed record
-//          oflcorrection      offset time on the timetags read in the file, due to overflows.
-//          buffer             buffer of the next chunk of records, containing for each a timetag and a channel number.
-//                             If a photon is read, timetag of this photon. Otherwise, timetag == 0. It already includes the overflow correction 
-//                                 so the value can be used directly.
-//                             If a photon is read, channel of this photon. 0 will usually be sync and >= 1 other input channels. If the record is 
-//                                 not a photon, channel == -1 for an overflow record, -2 for a marker record.
-//      */
-//     /* FUNCTION TESTED QUICKLY */
-    
-//     const int T2WRAPAROUND = 210698240;
-//     union
-//     {
-//         unsigned int allbits;
-//         struct
-//         {
-//             unsigned time   :28;
-//             unsigned channel  :4;
-//         } bits;
-        
-//     } Record;
-//     unsigned int markers;
-//     uint32_t TTTRRecord[RECORD_CHUNK];
-    
-//     fread(&TTTRRecord, RECORD_CHUNK, sizeof(uint32_t), filehandle);
-//     for(size_t i = 0; i < RECORD_CHUNK; i++) {
-//         Record.allbits = TTTRRecord[i];
-        
-//         if(Record.bits.channel == 0xF) //this means we have a special record
-//         {
-//             //in a special record the lower 4 bits of time are marker bits
-//             markers = Record.bits.time & 0xF;
-//             if(markers == 0) //this means we have an overflow record
-//             {
-//                 record_buf_push(buffer, 0, -1);
-//                 *oflcorrection += T2WRAPAROUND; // unwrap the time tag overflow
-//             }
-//             else //a marker
-//             {
-//                 //Strictly, in case of a marker, the lower 4 bits of time are invalid
-//                 //because they carry the marker bits. So one could zero them out.
-//                 //However, the marker resolution is only a few tens of nanoseconds anyway,
-//                 //so we can just ignore the few picoseconds of error.
-//                 record_buf_push(buffer, *oflcorrection + Record.bits.time, -2);
-//             }
-//         }
-//         else
-//         {
-//             if((int)Record.bits.channel > 4) //Should not occur
-//             {
-//                 record_buf_push(buffer, 0, -3);
-//             }
-//             else
-//             {
-//                 record_buf_push(buffer,
-//                                 *oflcorrection + Record.bits.time,
-//                                 Record.bits.channel);
-//             }
-//         }
-//     }
-// }
-
-// void ProcessHHT2_HH1(FILE* filehandle, record_buf_t *buffer,  uint64_t *oflcorrection)
-// {
-//     /*
-//      ProcessHHT2() reads the next records of a file until it finds a photon, and then returns.
-//      Inputs:
-//          filehandle         FILE pointer with an open record file to read the photons
-//          HHVersion          Hydrahard version 1 or 2. Depends on record type specification in the header.
-//          oflcorrection      pointer to an unsigned integer 64 bits. Will record the time correction in the timetags due to overflow (see output for details).
-//          buffer             buffer from which to read the next record (file chunk read buffer)
-//      Outputs:
-//          filehandle         FILE pointer with reader at the position of last analysed record
-//          oflcorrection      offset time on the timetags read in the file, due to overflows.
-//          buffer             buffer of the next chunk of records, containing for each a timetag and a channel number.
-//                             If a photon is read, timetag of this photon. Otherwise, timetag == 0. It already includes the overflow correction 
-//                                 so the value can be used directly.
-//                             If a photon is read, channel of this photon. 0 will usually be sync and >= 1 other input channels. If the record is 
-//                                 not a photon, channel == -1 for an overflow record, -2 for a marker record.
-//      */
-//     /* FUNCTION TESTED */
-    
-//     const uint64_t T2WRAPAROUND_V1 = 33552000;
-//     union{
-//         uint32_t   allbits;
-//         struct{ unsigned timetag  :25;
-//             unsigned channel  :6;
-//             unsigned special  :1; // or sync, if channel==0
-//         } bits;
-//     } T2Rec;
-//     uint32_t TTTRRecord[RECORD_CHUNK];
-    
-//     fread(TTTRRecord, RECORD_CHUNK, sizeof(uint32_t), filehandle);
-//     for(size_t i = 0; i < RECORD_CHUNK; i++) {
-//         T2Rec.allbits = TTTRRecord[i];
-        
-//         if(T2Rec.bits.special==1)
-//         {
-//             if(T2Rec.bits.channel==0x3F) //an overflow record
-//             {
-//                 record_buf_push(buffer, 0, -1);
-//                 *oflcorrection += T2WRAPAROUND_V1;
-                
-//                 record_buf_push(buffer, 0, -1);
-//             }
-            
-//             if((T2Rec.bits.channel>=1)&&(T2Rec.bits.channel<=15)) //markers
-//             {
-//                 //Note that actual marker tagging accuracy is only some ns.
-//                 record_buf_push(buffer, *oflcorrection + T2Rec.bits.timetag, -2);
-                
-//             }
-            
-//             else if(T2Rec.bits.channel==0) //sync
-//             {
-//                 record_buf_push(buffer, *oflcorrection + T2Rec.bits.timetag, T2Rec.bits.channel);
-//             }
-//         }
-//         else //regular input channel
-//         {
-//             record_buf_push(buffer,
-//                             *oflcorrection + T2Rec.bits.timetag,
-//                             T2Rec.bits.channel + 1);
-//         }
-//     }
-// }
-
-// void ProcessHHT2_HH2(FILE* filehandle, record_buf_t *buffer,  uint64_t *oflcorrection)
-// {
-//     /*
-//      ProcessHHT2() reads the next records of a file until it finds a photon, and then returns.
-//      Inputs:
-//          filehandle         FILE pointer with an open record file to read the photons
-//          HHVersion          Hydrahard version 1 or 2. Depends on record type specification in the header.
-//          oflcorrection      pointer to an unsigned integer 64 bits. Will record the time correction in the timetags due to overflow (see output for details).
-//          buffer             buffer from which to read the next record (file chunk read buffer)
-//      Outputs:
-//          filehandle         FILE pointer with reader at the position of last analysed record
-//          oflcorrection      offset time on the timetags read in the file, due to overflows.
-//          buffer             buffer of the next chunk of records, containing for each a timetag and a channel number.
-//                             If a photon is read, timetag of this photon. Otherwise, timetag == 0. It already includes the overflow correction 
-//                                 so the value can be used directly.
-//                             If a photon is read, channel of this photon. 0 will usually be sync and >= 1 other input channels. If the record is 
-//                                 not a photon, channel == -1 for an overflow record, -2 for a marker record.
-//      */
-//     /* FUNCTION TESTED */
-
-//     const uint64_t T2WRAPAROUND_V2 = 33554432;
-//     union{
-//         uint32_t   allbits;
-//         struct{ unsigned timetag  :25;
-//             unsigned channel  :6;
-//             unsigned special  :1; // or sync, if channel==0
-//         } bits;
-//     } T2Rec;
-//     uint32_t TTTRRecord[RECORD_CHUNK];
-    
-//     fread(TTTRRecord, RECORD_CHUNK, sizeof(uint32_t), filehandle);
-//     for(size_t i = 0; i < RECORD_CHUNK; i++) {
-//         T2Rec.allbits = TTTRRecord[i];
-        
-//         if(T2Rec.bits.special==1)
-//         {
-//             if(T2Rec.bits.channel==0x3F) //an overflow record
-//             {
-//                 //number of overflows is stored in timetag
-//                 if(T2Rec.bits.timetag==0) //if it is zero it is an old style single overflow
-//                 {
-//                     *oflcorrection += T2WRAPAROUND_V2;  //should never happen with new Firmware! ///
-//                 }
-//                 else
-//                 {
-//                     *oflcorrection += T2WRAPAROUND_V2 * T2Rec.bits.timetag; ///
-//                 }
-                
-//                 record_buf_push(buffer, 0, -1);
-//             }
-            
-//             if((T2Rec.bits.channel>=1)&&(T2Rec.bits.channel<=15)) //markers
-//             {
-//                 //Note that actual marker tagging accuracy is only some ns.
-//                 record_buf_push(buffer, *oflcorrection + T2Rec.bits.timetag, -2);
-                
-//             }
-            
-//             else if(T2Rec.bits.channel==0) //sync
-//             {
-//                 record_buf_push(buffer, *oflcorrection + T2Rec.bits.timetag, T2Rec.bits.channel);
-//             }
-//         }
-//         else //regular input channel
-//         {
-//             record_buf_push(buffer,
-//                             *oflcorrection + T2Rec.bits.timetag,
-//                             T2Rec.bits.channel + 1);
-//         }
-//     }
-// }
 
 void RecordHHT2(FILE* filehandle)
 {
@@ -2334,9 +2077,6 @@ _cffi_pypyinit__readTTTRRecords(const void *p[])
 {
     p[0] = (const void *)0x2601;
     p[1] = &_cffi_type_context;
-#if PY_MAJOR_VERSION >= 3
-    return NULL;
-#endif
 }
 #  ifdef _MSC_VER
      PyMODINIT_FUNC
