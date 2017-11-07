@@ -1,11 +1,3 @@
-//
-//  main.c
-//  ptu-read-tests
-//
-//  Created by Raphaël Proux on 03/10/2017.
-//  Copyright © 2017 Raphaël Proux. All rights reserved.
-//
-
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -118,7 +110,7 @@ void circular_buf_oldest(circular_buf_t * cbuf, uint64_t * data) {
 // CHAINED LIST BUFFER Structure for use with the dummy g2 algorithm (calculate_g2)
 // ====================================================================
 
-// this 'node' structure is a chained list to be used with the buffers. It is easy to add an item 
+// this 'node' structure is a chained list to be used with the buffers. It is easy to add an item
 // at the end and read+remove an item at the beginning (see the three functions below).
 typedef struct node {
     uint64_t val;
@@ -182,7 +174,7 @@ void chunk_fread(FILE* filehandle, recordParser parser, record_buf_t *buffer,  u
 {
     uint32_t TTTRRecord[RECORD_CHUNK];
     fread(TTTRRecord, RECORD_CHUNK, sizeof(uint32_t), filehandle);
-
+    
     for(uint32_t i = 0; i < RECORD_CHUNK; i++) {
         // T2Rec.allbits = TTTRRecord[i];
         (*parser)(&(TTTRRecord[i]), buffer, oflcorrection);
@@ -195,17 +187,17 @@ static void ParsePHT2(uint32_t *record ,record_buf_t *buffer,  uint64_t *oflcorr
     /*
      ProcessPHT2() reads the next records of a file until it finds a photon, and then returns.
      Inputs:
-         filehandle         FILE pointer with an open record file to read the photons
-         oflcorrection      pointer to an unsigned integer 64 bits. Will record the time correction in the timetags due to overflow (see output for details).
-         buffer             buffer from which to read the next record (file chunk read buffer)
+     filehandle         FILE pointer with an open record file to read the photons
+     oflcorrection      pointer to an unsigned integer 64 bits. Will record the time correction in the timetags due to overflow (see output for details).
+     buffer             buffer from which to read the next record (file chunk read buffer)
      Outputs:
-         filehandle         FILE pointer with reader at the position of last analysed record
-         oflcorrection      offset time on the timetags read in the file, due to overflows.
-         buffer             buffer of the next chunk of records, containing for each a timetag and a channel number.
-                            If a photon is read, timetag of this photon. Otherwise, timetag == 0. It already includes the overflow correction 
-                                so the value can be used directly.
-                            If a photon is read, channel of this photon. 0 will usually be sync and >= 1 other input channels. If the record is 
-                                not a photon, channel == -1 for an overflow record, -2 for a marker record.
+     filehandle         FILE pointer with reader at the position of last analysed record
+     oflcorrection      offset time on the timetags read in the file, due to overflows.
+     buffer             buffer of the next chunk of records, containing for each a timetag and a channel number.
+     If a photon is read, timetag of this photon. Otherwise, timetag == 0. It already includes the overflow correction
+     so the value can be used directly.
+     If a photon is read, channel of this photon. 0 will usually be sync and >= 1 other input channels. If the record is
+     not a photon, channel == -1 for an overflow record, -2 for a marker record.
      */
     /* FUNCTION TESTED QUICKLY */
     
@@ -221,7 +213,7 @@ static void ParsePHT2(uint32_t *record ,record_buf_t *buffer,  uint64_t *oflcorr
         
     } Record;
     unsigned int markers;
-
+    
     Record.allbits = *record;
     
     if(Record.bits.channel == 0xF) //this means we have a special record
@@ -262,18 +254,18 @@ static void ParseHHT2_HH1(uint32_t *record, record_buf_t *buffer,  uint64_t *ofl
     /*
      ProcessHHT2() reads the next records of a file until it finds a photon, and then returns.
      Inputs:
-         filehandle         FILE pointer with an open record file to read the photons
-         HHVersion          Hydrahard version 1 or 2. Depends on record type specification in the header.
-         oflcorrection      pointer to an unsigned integer 64 bits. Will record the time correction in the timetags due to overflow (see output for details).
-         buffer             buffer from which to read the next record (file chunk read buffer)
+     filehandle         FILE pointer with an open record file to read the photons
+     HHVersion          Hydrahard version 1 or 2. Depends on record type specification in the header.
+     oflcorrection      pointer to an unsigned integer 64 bits. Will record the time correction in the timetags due to overflow (see output for details).
+     buffer             buffer from which to read the next record (file chunk read buffer)
      Outputs:
-         filehandle         FILE pointer with reader at the position of last analysed record
-         oflcorrection      offset time on the timetags read in the file, due to overflows.
-         buffer             buffer of the next chunk of records, containing for each a timetag and a channel number.
-                            If a photon is read, timetag of this photon. Otherwise, timetag == 0. It already includes the overflow correction 
-                                so the value can be used directly.
-                            If a photon is read, channel of this photon. 0 will usually be sync and >= 1 other input channels. If the record is 
-                                not a photon, channel == -1 for an overflow record, -2 for a marker record.
+     filehandle         FILE pointer with reader at the position of last analysed record
+     oflcorrection      offset time on the timetags read in the file, due to overflows.
+     buffer             buffer of the next chunk of records, containing for each a timetag and a channel number.
+     If a photon is read, timetag of this photon. Otherwise, timetag == 0. It already includes the overflow correction
+     so the value can be used directly.
+     If a photon is read, channel of this photon. 0 will usually be sync and >= 1 other input channels. If the record is
+     not a photon, channel == -1 for an overflow record, -2 for a marker record.
      */
     /* FUNCTION TESTED */
     
@@ -285,7 +277,7 @@ static void ParseHHT2_HH1(uint32_t *record, record_buf_t *buffer,  uint64_t *ofl
             unsigned special  :1; // or sync, if channel==0
         } bits;
     } T2Rec;
-
+    
     T2Rec.allbits = *record;
     
     if(T2Rec.bits.special==1)
@@ -323,21 +315,21 @@ static void ParseHHT2_HH2(uint32_t *record, record_buf_t *buffer,  uint64_t *ofl
     /*
      ProcessHHT2() reads the next records of a file until it finds a photon, and then returns.
      Inputs:
-         filehandle         FILE pointer with an open record file to read the photons
-         HHVersion          Hydrahard version 1 or 2. Depends on record type specification in the header.
-         oflcorrection      pointer to an unsigned integer 64 bits. Will record the time correction in the timetags due to overflow (see output for details).
-         buffer             buffer from which to read the next record (file chunk read buffer)
+     filehandle         FILE pointer with an open record file to read the photons
+     HHVersion          Hydrahard version 1 or 2. Depends on record type specification in the header.
+     oflcorrection      pointer to an unsigned integer 64 bits. Will record the time correction in the timetags due to overflow (see output for details).
+     buffer             buffer from which to read the next record (file chunk read buffer)
      Outputs:
-         filehandle         FILE pointer with reader at the position of last analysed record
-         oflcorrection      offset time on the timetags read in the file, due to overflows.
-         buffer             buffer of the next chunk of records, containing for each a timetag and a channel number.
-                            If a photon is read, timetag of this photon. Otherwise, timetag == 0. It already includes the overflow correction 
-                                so the value can be used directly.
-                            If a photon is read, channel of this photon. 0 will usually be sync and >= 1 other input channels. If the record is 
-                                not a photon, channel == -1 for an overflow record, -2 for a marker record.
+     filehandle         FILE pointer with reader at the position of last analysed record
+     oflcorrection      offset time on the timetags read in the file, due to overflows.
+     buffer             buffer of the next chunk of records, containing for each a timetag and a channel number.
+     If a photon is read, timetag of this photon. Otherwise, timetag == 0. It already includes the overflow correction
+     so the value can be used directly.
+     If a photon is read, channel of this photon. 0 will usually be sync and >= 1 other input channels. If the record is
+     not a photon, channel == -1 for an overflow record, -2 for a marker record.
      */
     /* FUNCTION TESTED */
-
+    
     const uint64_t T2WRAPAROUND_V2 = 33554432;
     union{
         uint32_t   allbits;
@@ -346,7 +338,7 @@ static void ParseHHT2_HH2(uint32_t *record, record_buf_t *buffer,  uint64_t *ofl
             unsigned special  :1; // or sync, if channel==0
         } bits;
     } T2Rec;
-
+    
     T2Rec.allbits = *record;
     
     if(T2Rec.bits.special==1)
@@ -417,17 +409,17 @@ void RecordHHT2(FILE* filehandle)
     }
 }
 
-recordParser select_parser(long long record_type)
+void select_parser(recordParser *parser_function, long long record_type)
 {
     switch (record_type) {
         case rtPicoHarpT2:
-            return &ParsePHT2; //(filehandle, buffer, oflcorrection);
+            *parser_function = &ParsePHT2; //(filehandle, buffer, oflcorrection);
             break;
         case rtPicoHarpT3:
             //ProcessPHT3(TTTRRecord);
             break;
         case rtHydraHarpT2:
-            return &ParseHHT2_HH1; //(filehandle, 1, buffer, oflcorrection);
+            *parser_function = &ParseHHT2_HH1; //(filehandle, 1, buffer, oflcorrection);
             break;
         case rtHydraHarpT3:
             //ProcessHHT3(TTTRRecord, 1);
@@ -435,7 +427,7 @@ recordParser select_parser(long long record_type)
         case rtHydraHarp2T2:
         case rtTimeHarp260NT2:
         case rtTimeHarp260PT2:
-            return &ParseHHT2_HH2; //(filehandle, 2, buffer, oflcorrection);
+            *parser_function = &ParseHHT2_HH2; //(filehandle, 2, buffer, oflcorrection);
             break;
         case rtHydraHarp2T3:
         case rtTimeHarp260NT3:
@@ -443,9 +435,8 @@ recordParser select_parser(long long record_type)
             //ProcessHHT3(TTTRRecord, 2);
             break;
         default:
-            return &ParseHHT2_HH2;
+            *parser_function = NULL;
     }
-    return &ParseHHT2_HH2;  // horrible hack to silence a "non void no return" warning (gcc) or error (clang)
 }
 
 int next_photon(FILE* filehandle, recordParser parser, uint64_t *RecNum, uint64_t NumRecords, record_buf_t *buffer, uint64_t *oflcorrection, uint64_t *timetag, int *channel)
@@ -453,24 +444,24 @@ int next_photon(FILE* filehandle, recordParser parser, uint64_t *RecNum, uint64_
     /*
      next_photon() reads the next records of a file until it finds a photon, and then returns.
      Inputs:
-         filehandle         FILE pointer with an open record file to read the photons
-         record_type        record type which depends on the device which recorded the file (see constants at the beginning of file)
-         RecNum             pointer to the index of the record being read
-         NumRecords         total number of records
-         buffer             pointer to a record_buf_t structure which will be used for chunk file reading
-         oflcorrection      pointer to an unsigned integer 64 bits. Will record the time correction in the timetags due to overflow. 
-                                At the start of the file should be provided as 0 for initial value.
-         timetag            pointer to an unsigned integer 64 bits. Timetag of the next photon (see outputs for details).
-         channel            pointer to an integer. Channel of the next photon (see outputs for details).
+     filehandle         FILE pointer with an open record file to read the photons
+     record_type        record type which depends on the device which recorded the file (see constants at the beginning of file)
+     RecNum             pointer to the index of the record being read
+     NumRecords         total number of records
+     buffer             pointer to a record_buf_t structure which will be used for chunk file reading
+     oflcorrection      pointer to an unsigned integer 64 bits. Will record the time correction in the timetags due to overflow.
+     At the start of the file should be provided as 0 for initial value.
+     timetag            pointer to an unsigned integer 64 bits. Timetag of the next photon (see outputs for details).
+     channel            pointer to an integer. Channel of the next photon (see outputs for details).
      Outputs:
-         filehandle         FILE pointer with reader at the position of last analysed record
-         RecNum             index of last analysed record
-         oflcorrection      offset time on the timetags read in the file, due to overflows. Should not be used.
-         timetag            timetag of the last photon read. It already includes the overflow correction so the value can  be used directly.
-         channel            channel of the last photon read. 0 will usually be sync and >= 1 other input channels.
+     filehandle         FILE pointer with reader at the position of last analysed record
+     RecNum             index of last analysed record
+     oflcorrection      offset time on the timetags read in the file, due to overflows. Should not be used.
+     timetag            timetag of the last photon read. It already includes the overflow correction so the value can  be used directly.
+     channel            channel of the last photon read. 0 will usually be sync and >= 1 other input channels.
      Returns:
-         1 when found a photon,
-         0 when reached end of file.
+     1 when found a photon,
+     0 when reached end of file.
      */
     
     // We may sacrifice up to RECORD_CHUNK records at the end of the file in order to simplify the logic of the function.
@@ -507,24 +498,24 @@ int next_photon(FILE* filehandle, recordParser parser, uint64_t *RecNum, uint64_
 void timetrace(FILE* filehandle, long long record_type, int end_of_header, uint64_t *RecNum, uint64_t NumRecords, uint64_t time_bin_length, uint64_t *time_vector, int *time_trace, uint64_t *RecNum_trace, int nb_of_bins)
 {
     /*
-         timetrace() computes the timetrace of a given measurement file. It does not differentiate the channel detecting the photons, 
-         which are all added together.
-         Inputs:
-         filehandle         FILE pointer with an open record file to read the photons
-         record_type        record type which depends on the device which recorded the file (see constants at the beginning of file)
-         end_of_header      offset in bytes to the beginning of the record section in the file
-         RecNum             pointer to the index of the record being read
-         NumRecords         total number of records
-         time_bin_length    length of a time bin of the timetrace in picoseconds
-         time_vector        preallocated array used for the x-axis of the timetrace. Should have nb_of_bins elements.
-         time_trace         preallocated array used for the timetrace value. Should have nb_of_bins elements.
-         RecNum_trace       preallocated array used for the values of RecNum corresponding to the last photon of each time bin. Should have nb_of_bins elements.
-         We lose resolution due to the fact that we are reading chunks now.
-         nb_of_bins         number of bins for the timetrace (should correspond to the length of the time_trace array)
+     timetrace() computes the timetrace of a given measurement file. It does not differentiate the channel detecting the photons,
+     which are all added together.
+     Inputs:
+     filehandle         FILE pointer with an open record file to read the photons
+     record_type        record type which depends on the device which recorded the file (see constants at the beginning of file)
+     end_of_header      offset in bytes to the beginning of the record section in the file
+     RecNum             pointer to the index of the record being read
+     NumRecords         total number of records
+     time_bin_length    length of a time bin of the timetrace in picoseconds
+     time_vector        preallocated array used for the x-axis of the timetrace. Should have nb_of_bins elements.
+     time_trace         preallocated array used for the timetrace value. Should have nb_of_bins elements.
+     RecNum_trace       preallocated array used for the values of RecNum corresponding to the last photon of each time bin. Should have nb_of_bins elements.
+     We lose resolution due to the fact that we are reading chunks now.
+     nb_of_bins         number of bins for the timetrace (should correspond to the length of the time_trace array)
      Outputs:
-         filehandle         FILE pointer with reader at the position of last analysed record
-         RecNum             index of last analysed record
-         time_trace         calculated timetrace
+     filehandle         FILE pointer with reader at the position of last analysed record
+     RecNum             index of last analysed record
+     time_trace         calculated timetrace
      */
     // IMPORTANT NOTE: every time in picoseconds
     record_buf_t record_buffer;
@@ -537,8 +528,10 @@ void timetrace(FILE* filehandle, long long record_type, int end_of_header, uint6
     int add_photon_to_next_bin = 0;
     int i = 0;
     int photon_bool = 1;
-
-    recordParser parser = select_parser(record_type);
+    
+    // select record file parser function which will be called as (*parser)
+    recordParser parser = NULL;
+    select_parser(&parser, record_type);
     
     // reset file reader
     c_fseek(filehandle, end_of_header);
@@ -581,27 +574,27 @@ void timetrace(FILE* filehandle, long long record_type, int end_of_header, uint6
 void calculate_g2(FILE* filehandle, long long record_type, int end_of_header, uint64_t *RecNum, uint64_t NumRecords, uint64_t RecNum_start, uint64_t RecNum_stop, uint64_t *time_vector, int *histogram, int nb_of_bins, int channel_start, int channel_stop)
 {
     /*
-     calculate_g2() computes the g2 directly reading the measurement file. It uses a more complex algorithm than calculate_g2_fast(). 
-     This function will keep all photons in memory buffers, such that each start photon will be measured in regard of all the stop 
-     photons detected in a correlation window around it. This way, the measurement does not stop at the first stop photon but will 
+     calculate_g2() computes the g2 directly reading the measurement file. It uses a more complex algorithm than calculate_g2_fast().
+     This function will keep all photons in memory buffers, such that each start photon will be measured in regard of all the stop
+     photons detected in a correlation window around it. This way, the measurement does not stop at the first stop photon but will
      take into account longer time scales. It is therefore safer to use with high photon count rates.
      Inputs:
-         filehandle         FILE pointer with an open record file to read the photons
-         record_type        record type which depends on the device which recorded the file (see constants at the beginning of file)
-         end_of_header      offset in bytes to the beginning of the record section in the file
-         RecNum             pointer to the index of the record being read
-         NumRecords         total number of records
-         RecNum_start       start of the section of records to analyse for the g2 (in terms of record index)
-         RecNum_stop        stop of the section of records to analyse for the g2
-         time_vector        precalculated array of times used for the x-axis of the g2 histogram. Should have nb_of_bins + 1 elements.
-         histogram          preallocated array of zeros used for the g2 histogram. Should have nb_of_bins elements.
-         nb_of_bins         number of bins for the histogram (should correspond to the length of the histogram array)
-         channel_start      channel number used for start photons (sync will generally be 0)
-         channel_stop       channel number used for stop photons (> 0, often 1)
+     filehandle         FILE pointer with an open record file to read the photons
+     record_type        record type which depends on the device which recorded the file (see constants at the beginning of file)
+     end_of_header      offset in bytes to the beginning of the record section in the file
+     RecNum             pointer to the index of the record being read
+     NumRecords         total number of records
+     RecNum_start       start of the section of records to analyse for the g2 (in terms of record index)
+     RecNum_stop        stop of the section of records to analyse for the g2
+     time_vector        precalculated array of times used for the x-axis of the g2 histogram. Should have nb_of_bins + 1 elements.
+     histogram          preallocated array of zeros used for the g2 histogram. Should have nb_of_bins elements.
+     nb_of_bins         number of bins for the histogram (should correspond to the length of the histogram array)
+     channel_start      channel number used for start photons (sync will generally be 0)
+     channel_stop       channel number used for stop photons (> 0, often 1)
      Outputs:
-         filehandle         FILE pointer with reader at the position of last analysed record
-         RecNum             index of last analysed record
-         histogram          calculated g2 histogram
+     filehandle         FILE pointer with reader at the position of last analysed record
+     RecNum             index of last analysed record
+     histogram          calculated g2 histogram
      */
     
     record_buf_t record_buffer;
@@ -624,6 +617,10 @@ void calculate_g2(FILE* filehandle, long long record_type, int end_of_header, ui
     //    long next_print = 0;
     correlation_window = time_vector[nb_of_bins];
     
+    // select record file parser function which will be called as (*parser)
+    recordParser parser = NULL;
+    select_parser(&parser, record_type);
+    
     // First item in the chained lists will be kept as anchor and only the 'next' items will contain timetags.
     // This avoids emptying totally the list and having to recreate it when starting to fill it again.
     head_init(&start_buff_head, &start_buff_length);
@@ -634,16 +631,14 @@ void calculate_g2(FILE* filehandle, long long record_type, int end_of_header, ui
      This algorithm implies using 3 buffers:
      start_buff_head      : the start photons buffer, where all unused start photons go (to be used later)
      stop_buff_head       : the stop photons buffer, where all unused stop photons go (to be used later)
-     stop_corr_buff_head  : the correlation stop photons buffer. This buffer contains all the stop photons which fit 
-                            in a correlation window around the selected start photon. For each new start photon, 
-                            it needs to be modified removing the old photons which do not fit anymore in the correlation 
-                            window and adding the new ones which now fit in the correlation window.
+     stop_corr_buff_head  : the correlation stop photons buffer. This buffer contains all the stop photons which fit
+     in a correlation window around the selected start photon. For each new start photon,
+     it needs to be modified removing the old photons which do not fit anymore in the correlation
+     window and adding the new ones which now fit in the correlation window.
      
      Note that this algorithm supposes the list of photons to be ordered chronologically.
      */
     
-    recordParser parser = select_parser(record_type);
-
     // reset file reader and go to the start position RecNum_start
     c_fseek(filehandle, end_of_header + 4 * RecNum_start);
     *RecNum = RecNum_start;
@@ -726,31 +721,31 @@ void calculate_g2(FILE* filehandle, long long record_type, int end_of_header, ui
     }
 }
 
-void calculate_g2_fast(FILE* filehandle, long long record_type, int end_of_header, uint64_t *RecNum, uint64_t NumRecords, 
-                       uint64_t RecNum_start, uint64_t RecNum_stop, uint64_t *time_vector, int *histogram, int nb_of_bins, 
+void calculate_g2_fast(FILE* filehandle, long long record_type, int end_of_header, uint64_t *RecNum, uint64_t NumRecords,
+                       uint64_t RecNum_start, uint64_t RecNum_stop, uint64_t *time_vector, int *histogram, int nb_of_bins,
                        int channel_start, int channel_stop)
 {
     /*
-     calculate_g2_fast() computes the g2 directly reading the measurement file. It uses a simple algorithm which stops at 
-     the first stop photon (histogram mode style). This algorithm is fast but loses some information and can exhibit an 
+     calculate_g2_fast() computes the g2 directly reading the measurement file. It uses a simple algorithm which stops at
+     the first stop photon (histogram mode style). This algorithm is fast but loses some information and can exhibit an
      exponential decay artefact linked to the photon rates.
      Inputs:
-         filehandle         FILE pointer with an open record file to read the photons
-         record_type        record type which depends on the device which recorded the file (see constants at the beginning of file)
-         end_of_header      offset in bytes to the beginning of the record section in the file
-         RecNum             pointer to the index of the record being read
-         NumRecords         total number of records
-         RecNum_start       start of the section of records to analyse for the g2 (in terms of record index)
-         RecNum_stop        stop of the section of records to analyse for the g2
-         time_vector        precalculated array of times used for the x-axis of the g2 histogram. Should have nb_of_bins + 1 elements.
-         histogram          preallocated array of zeros used for the g2 histogram. Should have nb_of_bins elements.
-         nb_of_bins         number of bins for the histogram (should correspond to the length of the histogram array)
-         channel_start      channel number used for start photons (sync will generally be 0)
-         channel_stop       channel number used for stop photons (> 0, often 1)
+     filehandle         FILE pointer with an open record file to read the photons
+     record_type        record type which depends on the device which recorded the file (see constants at the beginning of file)
+     end_of_header      offset in bytes to the beginning of the record section in the file
+     RecNum             pointer to the index of the record being read
+     NumRecords         total number of records
+     RecNum_start       start of the section of records to analyse for the g2 (in terms of record index)
+     RecNum_stop        stop of the section of records to analyse for the g2
+     time_vector        precalculated array of times used for the x-axis of the g2 histogram. Should have nb_of_bins + 1 elements.
+     histogram          preallocated array of zeros used for the g2 histogram. Should have nb_of_bins elements.
+     nb_of_bins         number of bins for the histogram (should correspond to the length of the histogram array)
+     channel_start      channel number used for start photons (sync will generally be 0)
+     channel_stop       channel number used for stop photons (> 0, often 1)
      Outputs:
-         filehandle         FILE pointer with reader at the position of last analysed record
-         RecNum             index of last analysed record
-         histogram          calculated g2 histogram
+     filehandle         FILE pointer with reader at the position of last analysed record
+     RecNum             index of last analysed record
+     histogram          calculated g2 histogram
      */
     
     record_buf_t record_buffer;
@@ -768,12 +763,15 @@ void calculate_g2_fast(FILE* filehandle, long long record_type, int end_of_heade
     //    long next_print = 0;
     correlation_window = time_vector[nb_of_bins];
     
+    // select record file parser function which will be called as (*parser)
+    recordParser parser = NULL;
+    select_parser(&parser, record_type);
+    
     // reset file reader and go to the start position RecNum_start
     c_fseek(filehandle, end_of_header + 4 * RecNum_start);
     *RecNum = RecNum_start;
     
-    recordParser parser = select_parser(record_type);
-
+    
     // go to the start position RecNum_start
     while(*RecNum < RecNum_stop && photon_bool){
         // FIND NEXT START PHOTON
@@ -817,28 +815,28 @@ void calculate_g2_ring(FILE* filehandle, long long record_type, int end_of_heade
                        int buffer_size)
 {
     /*
-     calculate_g2() computes the g2 directly reading the measurement file. It uses a more complex algorithm than calculate_g2_fast(). 
-     This function will keep all photons in memory buffers, such that each start photon will be measured in regard of all the stop 
-     photons detected in a correlation window around it. This way, the measurement does not stop at the first stop photon but will 
+     calculate_g2() computes the g2 directly reading the measurement file. It uses a more complex algorithm than calculate_g2_fast().
+     This function will keep all photons in memory buffers, such that each start photon will be measured in regard of all the stop
+     photons detected in a correlation window around it. This way, the measurement does not stop at the first stop photon but will
      take into account longer time scales. It is therefore safer to use with high photon count rates.
      Inputs:
-         filehandle         FILE pointer with an open record file to read the photons
-         record_type        record type which depends on the device which recorded the file (see constants at the beginning of file)
-         end_of_header      offset in bytes to the beginning of the record section in the file
-         RecNum             pointer to the index of the record being read
-         NumRecords         total number of records
-         RecNum_start       start of the section of records to analyse for the g2 (in terms of record index)
-         RecNum_stop        stop of the section of records to analyse for the g2
-         time_vector        precalculated array of times used for the x-axis of the g2 histogram. Should have nb_of_bins + 1 elements.
-         histogram          preallocated array of zeros used for the g2 histogram. Should have nb_of_bins elements.
-         nb_of_bins         number of bins for the histogram (should correspond to the length of the histogram array)
-         channel_start      channel number used for start photons (sync will generally be 0)
-         channel_stop       channel number used for stop photons (> 0, often 1)
-         buffer_size        Size of the ring buffer
+     filehandle         FILE pointer with an open record file to read the photons
+     record_type        record type which depends on the device which recorded the file (see constants at the beginning of file)
+     end_of_header      offset in bytes to the beginning of the record section in the file
+     RecNum             pointer to the index of the record being read
+     NumRecords         total number of records
+     RecNum_start       start of the section of records to analyse for the g2 (in terms of record index)
+     RecNum_stop        stop of the section of records to analyse for the g2
+     time_vector        precalculated array of times used for the x-axis of the g2 histogram. Should have nb_of_bins + 1 elements.
+     histogram          preallocated array of zeros used for the g2 histogram. Should have nb_of_bins elements.
+     nb_of_bins         number of bins for the histogram (should correspond to the length of the histogram array)
+     channel_start      channel number used for start photons (sync will generally be 0)
+     channel_stop       channel number used for stop photons (> 0, often 1)
+     buffer_size        Size of the ring buffer
      Outputs:
-         filehandle         FILE pointer with reader at the position of last analysed record
-         RecNum             index of last analysed record
-         histogram          calculated g2 histogram
+     filehandle         FILE pointer with reader at the position of last analysed record
+     RecNum             index of last analysed record
+     histogram          calculated g2 histogram
      */
     
     record_buf_t record_buffer;
@@ -858,8 +856,10 @@ void calculate_g2_ring(FILE* filehandle, long long record_type, int end_of_heade
     uint64_t max_correlation_window = time_vector[nb_of_bins];
     
     int photon_bool = 1;
-
-    recordParser parser = select_parser(record_type);
+    
+    // select record file parser function which will be called as (*parser)
+    recordParser parser = NULL;
+    select_parser(&parser, record_type);
     
     // reset file reader and go to the start position RecNum_start
     c_fseek(filehandle, end_of_header + 4 * RecNum_start);
