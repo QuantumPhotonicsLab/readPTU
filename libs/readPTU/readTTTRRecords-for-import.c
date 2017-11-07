@@ -1,3 +1,4 @@
+
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -14,40 +15,38 @@
 #define rtTimeHarp260PT2 0x00010206    // (SubID = $00 ,RecFmt: $01) (V1), T-Mode: $02 (T2), HW: $06 (TimeHarp260P)
 
 // How big the file chunking will be
-#define RECORD_CHUNK 512
+#define RECORD_CHUNK 1024
+
+// Prototypes
+static inline void ParsePHT2(uint32_t record, int *restrict channel, uint64_t *restrict timetag, uint64_t *restrict oflcorrection);
+static inline void ParseHHT2_HH1(uint32_t record, int *restrict channel, uint64_t *restrict timetag, uint64_t *restrict oflcorrection);
+static inline void ParseHHT2_HH2(uint32_t record, int *restrict channel, uint64_t *restrict timetag, uint64_t *restrict oflcorrection);
 
 // ================================================
 // Buffer for keeping track of records
 // ================================================
 typedef struct {
-    uint64_t timetag;
-    int channel;
-} record;
-
-typedef struct {
-    record records[RECORD_CHUNK]; // using this will improve memory locality
-    size_t head;  // to keep track of what was the last read record in buffer
-    size_t count; // if don't have enough photons, for example due to many records being oflcorrection flags
+    uint32_t records[RECORD_CHUNK];
+    size_t head;
+    size_t count;
 } record_buf_t;
+
+typedef void (*recordParser)(uint32_t, int*, uint64_t*, uint64_t*);
 
 void record_buf_reset(record_buf_t *buffer) {
     buffer->head = 0;
     buffer->count = 0;
 }
 
-void record_buf_pop(record_buf_t *buffer, uint64_t *timetag, int *channel) {
-    size_t head = buffer->head;
-    *timetag = buffer->records[head].timetag;
-    *channel = buffer->records[head].channel;
-    buffer->head = head + 1;
+static inline void record_buf_pop(record_buf_t *restrict buffer, recordParser parser,
+                                  uint64_t *restrict timetag, int *restrict channel,
+                                  uint64_t *restrict oflcorrection) {
+    // we are going to hide the swith in here
+    uint32_t rec = buffer->records[buffer->head];
+    (*parser)(rec, channel, timetag, oflcorrection);
+    buffer->head += 1;
 }
 
-void record_buf_push(record_buf_t *buffer, uint64_t timetag, int channel) {
-    size_t count = buffer->count;
-    buffer->records[count].timetag = timetag;
-    buffer->records[count].channel = channel;
-    buffer->count = count + 1;
-}
 // ================================================
 // END Buffer for keeping track of records
 // ================================================
@@ -141,7 +140,8 @@ void push(node_t * head, uint64_t val, int* length) {
 
 uint64_t pop(node_t * head, int* length) {
     // remove the first info item (second in the list) from the list, returning its value
-    // remember that, for simplicity, we keep the very first item of the list alive so we don't need to recreate one each time the list becomes empty.
+    // remember that, for simplicity, we keep the very first item of the list
+    // alive so we don't need to recreate one each time the list becomes empty.
     uint64_t retval = 0;
     node_t * next_node = NULL;
     
@@ -162,27 +162,14 @@ uint64_t pop(node_t * head, int* length) {
 // END OF DUMMY G2 BUFFER
 // ============================
 
-typedef void (*recordParser)(uint32_t*, record_buf_t*, uint64_t*);
-
 
 int c_fseek(FILE *filehandle, long int offset)
 {
     return fseek(filehandle, offset, SEEK_SET);
 }
 
-void chunk_fread(FILE* filehandle, recordParser parser, record_buf_t *buffer,  uint64_t *oflcorrection)
-{
-    uint32_t TTTRRecord[RECORD_CHUNK];
-    fread(TTTRRecord, RECORD_CHUNK, sizeof(uint32_t), filehandle);
-    
-    for(uint32_t i = 0; i < RECORD_CHUNK; i++) {
-        // T2Rec.allbits = TTTRRecord[i];
-        (*parser)(&(TTTRRecord[i]), buffer, oflcorrection);
-    }
-}
-
-
-static void ParsePHT2(uint32_t *record ,record_buf_t *buffer,  uint64_t *oflcorrection)
+static inline void ParsePHT2(uint32_t record, int *restrict channel,
+                             uint64_t *restrict timetag, uint64_t *restrict oflcorrection)
 {
     /*
      ProcessPHT2() reads the next records of a file until it finds a photon, and then returns.
@@ -214,7 +201,7 @@ static void ParsePHT2(uint32_t *record ,record_buf_t *buffer,  uint64_t *oflcorr
     } Record;
     unsigned int markers;
     
-    Record.allbits = *record;
+    Record.allbits = record;
     
     if(Record.bits.channel == 0xF) //this means we have a special record
     {
@@ -222,7 +209,8 @@ static void ParsePHT2(uint32_t *record ,record_buf_t *buffer,  uint64_t *oflcorr
         markers = Record.bits.time & 0xF;
         if(markers == 0) //this means we have an overflow record
         {
-            record_buf_push(buffer, 0, -1);
+            *timetag = 0;
+            *channel = -1;
             *oflcorrection += T2WRAPAROUND; // unwrap the time tag overflow
         }
         else //a marker
@@ -231,25 +219,27 @@ static void ParsePHT2(uint32_t *record ,record_buf_t *buffer,  uint64_t *oflcorr
             //because they carry the marker bits. So one could zero them out.
             //However, the marker resolution is only a few tens of nanoseconds anyway,
             //so we can just ignore the few picoseconds of error.
-            record_buf_push(buffer, *oflcorrection + Record.bits.time, -2);
+            *timetag = *oflcorrection + Record.bits.time;
+            *channel = -2;
         }
     }
     else
     {
         if((int)Record.bits.channel > 4) //Should not occur
         {
-            record_buf_push(buffer, 0, -3);
+            *timetag = 0;
+            *channel = -3;
         }
         else
         {
-            record_buf_push(buffer,
-                            *oflcorrection + Record.bits.time,
-                            Record.bits.channel);
+            *timetag = *oflcorrection + Record.bits.time;
+            *channel = Record.bits.channel;
         }
     }
 }
 
-static void ParseHHT2_HH1(uint32_t *record, record_buf_t *buffer,  uint64_t *oflcorrection)
+static inline void ParseHHT2_HH1(uint32_t record, int *restrict channel,
+                                 uint64_t *restrict timetag, uint64_t *restrict oflcorrection)
 {
     /*
      ProcessHHT2() reads the next records of a file until it finds a photon, and then returns.
@@ -278,39 +268,41 @@ static void ParseHHT2_HH1(uint32_t *record, record_buf_t *buffer,  uint64_t *ofl
         } bits;
     } T2Rec;
     
-    T2Rec.allbits = *record;
+    T2Rec.allbits = record;
     
     if(T2Rec.bits.special==1)
     {
         if(T2Rec.bits.channel==0x3F) //an overflow record
         {
-            record_buf_push(buffer, 0, -1);
-            *oflcorrection += T2WRAPAROUND_V1;
             
-            record_buf_push(buffer, 0, -1);
+            *timetag = 0;
+            *channel = -1;
+            *oflcorrection += T2WRAPAROUND_V1;
         }
         
         if((T2Rec.bits.channel>=1)&&(T2Rec.bits.channel<=15)) //markers
         {
             //Note that actual marker tagging accuracy is only some ns.
-            record_buf_push(buffer, *oflcorrection + T2Rec.bits.timetag, -2);
+            *timetag = *oflcorrection + T2Rec.bits.timetag;
+            *channel = -2;
             
         }
         
         else if(T2Rec.bits.channel==0) //sync
         {
-            record_buf_push(buffer, *oflcorrection + T2Rec.bits.timetag, T2Rec.bits.channel);
+            *timetag = *oflcorrection + T2Rec.bits.timetag;
+            *channel = T2Rec.bits.channel;
         }
     }
     else //regular input channel
     {
-        record_buf_push(buffer,
-                        *oflcorrection + T2Rec.bits.timetag,
-                        T2Rec.bits.channel + 1);
+        *timetag = *oflcorrection + T2Rec.bits.timetag;
+        *channel = T2Rec.bits.channel + 1;
     }
 }
 
-static void ParseHHT2_HH2(uint32_t *record, record_buf_t *buffer,  uint64_t *oflcorrection)
+static inline void ParseHHT2_HH2(uint32_t record, int *restrict channel,
+                                 uint64_t *restrict timetag, uint64_t *restrict oflcorrection)
 {
     /*
      ProcessHHT2() reads the next records of a file until it finds a photon, and then returns.
@@ -339,7 +331,7 @@ static void ParseHHT2_HH2(uint32_t *record, record_buf_t *buffer,  uint64_t *ofl
         } bits;
     } T2Rec;
     
-    T2Rec.allbits = *record;
+    T2Rec.allbits = record;
     
     if(T2Rec.bits.special==1)
     {
@@ -355,26 +347,58 @@ static void ParseHHT2_HH2(uint32_t *record, record_buf_t *buffer,  uint64_t *ofl
                 *oflcorrection += T2WRAPAROUND_V2 * T2Rec.bits.timetag; ///
             }
             
-            record_buf_push(buffer, 0, -1);
+            *timetag = 0;
+            *channel = -1;
         }
         
         if((T2Rec.bits.channel>=1)&&(T2Rec.bits.channel<=15)) //markers
         {
             //Note that actual marker tagging accuracy is only some ns.
-            record_buf_push(buffer, *oflcorrection + T2Rec.bits.timetag, -2);
-            
+            *timetag = *oflcorrection + T2Rec.bits.timetag;
+            *channel = -2;
         }
         
         else if(T2Rec.bits.channel==0) //sync
         {
-            record_buf_push(buffer, *oflcorrection + T2Rec.bits.timetag, T2Rec.bits.channel);
+            *timetag = *oflcorrection + T2Rec.bits.timetag;
+            *channel = T2Rec.bits.channel;
         }
     }
     else //regular input channel
     {
-        record_buf_push(buffer,
-                        *oflcorrection + T2Rec.bits.timetag,
-                        T2Rec.bits.channel + 1);
+        *timetag = *oflcorrection + T2Rec.bits.timetag;
+        *channel = T2Rec.bits.channel + 1;
+    }
+}
+
+
+void select_parser(recordParser *parser_function, long long record_type)
+{
+    switch (record_type) {
+        case rtPicoHarpT2:
+            *parser_function = &ParsePHT2; //(filehandle, buffer, oflcorrection);
+            break;
+        case rtPicoHarpT3:
+            //ProcessPHT3(TTTRRecord);
+            break;
+        case rtHydraHarpT2:
+            *parser_function = &ParseHHT2_HH1; //(filehandle, 1, buffer, oflcorrection);
+            break;
+        case rtHydraHarpT3:
+            //ProcessHHT3(TTTRRecord, 1);
+            break;
+        case rtHydraHarp2T2:
+        case rtTimeHarp260NT2:
+        case rtTimeHarp260PT2:
+            *parser_function = &ParseHHT2_HH2; //(filehandle, 2, buffer, oflcorrection);
+            break;
+        case rtHydraHarp2T3:
+        case rtTimeHarp260NT3:
+        case rtTimeHarp260PT3:
+            //ProcessHHT3(TTTRRecord, 2);
+            break;
+        default:
+            *parser_function = NULL;
     }
 }
 
@@ -409,37 +433,10 @@ void RecordHHT2(FILE* filehandle)
     }
 }
 
-void select_parser(recordParser *parser_function, long long record_type)
-{
-    switch (record_type) {
-        case rtPicoHarpT2:
-            *parser_function = &ParsePHT2; //(filehandle, buffer, oflcorrection);
-            break;
-        case rtPicoHarpT3:
-            //ProcessPHT3(TTTRRecord);
-            break;
-        case rtHydraHarpT2:
-            *parser_function = &ParseHHT2_HH1; //(filehandle, 1, buffer, oflcorrection);
-            break;
-        case rtHydraHarpT3:
-            //ProcessHHT3(TTTRRecord, 1);
-            break;
-        case rtHydraHarp2T2:
-        case rtTimeHarp260NT2:
-        case rtTimeHarp260PT2:
-            *parser_function = &ParseHHT2_HH2; //(filehandle, 2, buffer, oflcorrection);
-            break;
-        case rtHydraHarp2T3:
-        case rtTimeHarp260NT3:
-        case rtTimeHarp260PT3:
-            //ProcessHHT3(TTTRRecord, 2);
-            break;
-        default:
-            *parser_function = NULL;
-    }
-}
 
-int next_photon(FILE* filehandle, recordParser parser, uint64_t *RecNum, uint64_t NumRecords, record_buf_t *buffer, uint64_t *oflcorrection, uint64_t *timetag, int *channel)
+static inline int next_photon(FILE* filehandle, recordParser parser, uint64_t *restrict RecNum,
+                              uint64_t NumRecords, record_buf_t *restrict buffer,
+                              uint64_t *restrict oflcorrection, uint64_t *restrict timetag, int *restrict channel)
 {
     /*
      next_photon() reads the next records of a file until it finds a photon, and then returns.
@@ -468,7 +465,7 @@ int next_photon(FILE* filehandle, recordParser parser, uint64_t *RecNum, uint64_
     if (buffer->head < RECORD_CHUNK && buffer->count > 0) { // still have records on buffer
     pop_record:
         do {
-            record_buf_pop(buffer, timetag, channel);
+            record_buf_pop(buffer, parser, timetag, channel, oflcorrection);
             *RecNum += 1;
         } while(*channel < 0 && buffer->head < RECORD_CHUNK);
         
@@ -483,7 +480,8 @@ int next_photon(FILE* filehandle, recordParser parser, uint64_t *RecNum, uint64_
         // we need to replenish the photon pool
         record_buf_reset(buffer);
         if ((*RecNum+RECORD_CHUNK) < NumRecords) {
-            chunk_fread(filehandle, parser, buffer, oflcorrection);
+            fread(buffer->records, RECORD_CHUNK, sizeof(uint32_t), filehandle);
+            buffer->count = RECORD_CHUNK;
             goto pop_record;
         }
         else {
@@ -492,10 +490,36 @@ int next_photon(FILE* filehandle, recordParser parser, uint64_t *RecNum, uint64_
         return 0; // if we didn't had enough records to replenish
         // the buffer we are done.
     }
-    
 }
 
-void timetrace(FILE* filehandle, long long record_type, int end_of_header, uint64_t *RecNum, uint64_t NumRecords, uint64_t time_bin_length, uint64_t *time_vector, int *time_trace, uint64_t *RecNum_trace, int nb_of_bins)
+void timetrace(FILE* filehandle, long long record_type, int end_of_header,
+               uint64_t *RecNum, uint64_t NumRecords, uint64_t time_bin_length,
+               uint64_t *time_vector, int *time_trace,
+               uint64_t *RecNum_trace, int nb_of_bins)
+// {
+//     record_buf_t TTTRRecord;
+//     record_buf_reset(&TTTRRecord);
+//     uint64_t oflcorrection = 0;
+//     uint64_t timetag = 0;
+//     int channel = -1;
+//     int photon_bool = 1;
+
+//     uint64_t dummy_counter = 0;
+
+//     // reset file reader
+//     c_fseek(filehandle, end_of_header);
+
+//     photon_bool = next_photon(filehandle, record_type, RecNum, NumRecords,
+//                               &TTTRRecord, &oflcorrection, &timetag, &channel);
+
+//     while(photon_bool) {
+//         dummy_counter += 1;
+//         photon_bool = next_photon(filehandle, record_type, RecNum, NumRecords,
+//                                   &TTTRRecord, &oflcorrection, &timetag, &channel);
+//     }
+
+//     printf("%llu\n", dummy_counter);
+// }
 {
     /*
      timetrace() computes the timetrace of a given measurement file. It does not differentiate the channel detecting the photons,
@@ -518,8 +542,8 @@ void timetrace(FILE* filehandle, long long record_type, int end_of_header, uint6
      time_trace         calculated timetrace
      */
     // IMPORTANT NOTE: every time in picoseconds
-    record_buf_t record_buffer;
-    record_buf_reset(&record_buffer);
+    record_buf_t TTTRRecord;
+    record_buf_reset(&TTTRRecord);
     
     uint64_t oflcorrection = 0;
     uint64_t timetag = 0;
@@ -547,18 +571,18 @@ void timetrace(FILE* filehandle, long long record_type, int end_of_header, uint6
             add_photon_to_next_bin = 0;
             
             photon_bool = next_photon(filehandle, parser, RecNum, NumRecords,
-                                      &record_buffer, &oflcorrection, &timetag, &channel);
+                                      &TTTRRecord, &oflcorrection, &timetag, &channel);
             while(photon_bool == 1) {
-                if(timetag < end_of_bin) { // photon is in the current bin
-                    time_trace[i] = time_trace[i] + 1;
+                if(timetag < end_of_bin) {  // photon is in the current bin
+                    time_trace[i] += 1;
                 }
-                else { // belongs to some further bin (CAUTION: may not be the one immediately after)
+                else {  // belongs to some further bin (CAUTION: may not be the one immediately after)
                     RecNum_trace[i] = *RecNum;
                     add_photon_to_next_bin = 1;
                     break;
                 }
                 photon_bool = next_photon(filehandle, parser, RecNum, NumRecords,
-                                          &record_buffer, &oflcorrection, &timetag, &channel);
+                                          &TTTRRecord, &oflcorrection, &timetag, &channel);
             }
             if (photon_bool == 0) {  // for the last time bin
                 RecNum_trace[i] = *RecNum;
@@ -571,7 +595,10 @@ void timetrace(FILE* filehandle, long long record_type, int end_of_header, uint6
     }
 }
 
-void calculate_g2(FILE* filehandle, long long record_type, int end_of_header, uint64_t *RecNum, uint64_t NumRecords, uint64_t RecNum_start, uint64_t RecNum_stop, uint64_t *time_vector, int *histogram, int nb_of_bins, int channel_start, int channel_stop)
+void calculate_g2(FILE* filehandle, long long record_type, int end_of_header,
+                  uint64_t *RecNum, uint64_t NumRecords, uint64_t RecNum_start,
+                  uint64_t RecNum_stop, uint64_t *time_vector, int *histogram,
+                  int nb_of_bins, int channel_start, int channel_stop)
 {
     /*
      calculate_g2() computes the g2 directly reading the measurement file. It uses a more complex algorithm than calculate_g2_fast().
@@ -597,8 +624,8 @@ void calculate_g2(FILE* filehandle, long long record_type, int end_of_header, ui
      histogram          calculated g2 histogram
      */
     
-    record_buf_t record_buffer;
-    record_buf_reset(&record_buffer);
+    record_buf_t TTTRRecord;
+    record_buf_reset(&TTTRRecord);
     
     node_t* start_buff_head = NULL;
     node_t* stop_buff_head = NULL;
@@ -659,7 +686,7 @@ void calculate_g2(FILE* filehandle, long long record_type, int end_of_header, ui
         else {
             channel = -1;
             while(channel != channel_start && (*RecNum < RecNum_stop && *RecNum < NumRecords)){
-                next_photon(filehandle, parser, RecNum, NumRecords, &record_buffer, &oflcorrection, &timetag, &channel);
+                next_photon(filehandle, parser, RecNum, NumRecords, &TTTRRecord, &oflcorrection, &timetag, &channel);
                 if (channel == channel_stop){ // store in stop photons buffer
                     push(stop_buff_head, timetag, &stop_buff_length);
                 }
@@ -682,7 +709,7 @@ void calculate_g2(FILE* filehandle, long long record_type, int end_of_header, ui
         // if stop buffer is empty, read photons until the time gets out of the correlation window, and feed start buffer and the stop photons array in the process
         if (stop_buff_length == 0) {
             while (timetag < correlation_window_end && (*RecNum < RecNum_stop && *RecNum < NumRecords)) {
-                next_photon(filehandle, parser, RecNum, NumRecords, &record_buffer, &oflcorrection, &timetag, &channel);
+                next_photon(filehandle, parser, RecNum, NumRecords, &TTTRRecord, &oflcorrection, &timetag, &channel);
                 // start photon -> store in start photon buffer (to be used later)
                 if (channel == channel_start) {
                     push(start_buff_head, timetag, &start_buff_length);
@@ -721,9 +748,10 @@ void calculate_g2(FILE* filehandle, long long record_type, int end_of_header, ui
     }
 }
 
-void calculate_g2_fast(FILE* filehandle, long long record_type, int end_of_header, uint64_t *RecNum, uint64_t NumRecords,
-                       uint64_t RecNum_start, uint64_t RecNum_stop, uint64_t *time_vector, int *histogram, int nb_of_bins,
-                       int channel_start, int channel_stop)
+void calculate_g2_fast(FILE* filehandle, long long record_type, int end_of_header,
+                       uint64_t *RecNum, uint64_t NumRecords, uint64_t RecNum_start,
+                       uint64_t RecNum_stop, uint64_t *time_vector, int *histogram,
+                       int nb_of_bins, int channel_start, int channel_stop)
 {
     /*
      calculate_g2_fast() computes the g2 directly reading the measurement file. It uses a simple algorithm which stops at
@@ -748,8 +776,8 @@ void calculate_g2_fast(FILE* filehandle, long long record_type, int end_of_heade
      histogram          calculated g2 histogram
      */
     
-    record_buf_t record_buffer;
-    record_buf_reset(&record_buffer);
+    record_buf_t TTTRRecord;
+    record_buf_reset(&TTTRRecord);
     
     uint64_t start_time = 0;
     uint64_t stop_time = 0;
@@ -771,14 +799,13 @@ void calculate_g2_fast(FILE* filehandle, long long record_type, int end_of_heade
     c_fseek(filehandle, end_of_header + 4 * RecNum_start);
     *RecNum = RecNum_start;
     
-    
     // go to the start position RecNum_start
     while(*RecNum < RecNum_stop && photon_bool){
         // FIND NEXT START PHOTON
         channel = -1;
         while(*RecNum < RecNum_stop && photon_bool==1 && channel != channel_start){
             photon_bool = next_photon(filehandle, parser, RecNum, NumRecords,
-                                      &record_buffer, &oflcorrection, &timetag, &channel);
+                                      &TTTRRecord, &oflcorrection, &timetag, &channel);
         }
         if (*RecNum >= RecNum_stop || *RecNum >= NumRecords){
             break;
@@ -791,7 +818,7 @@ void calculate_g2_fast(FILE* filehandle, long long record_type, int end_of_heade
         // FIND NEXT STOP PHOTON
         while (*RecNum < RecNum_stop && photon_bool==1 && channel != channel_stop) {
             photon_bool = next_photon(filehandle, parser, RecNum, NumRecords,
-                                      &record_buffer, &oflcorrection, &timetag, &channel);
+                                      &TTTRRecord, &oflcorrection, &timetag, &channel);
         }
         // found a stop photon
         if (channel == channel_stop) {
@@ -839,8 +866,8 @@ void calculate_g2_ring(FILE* filehandle, long long record_type, int end_of_heade
      histogram          calculated g2 histogram
      */
     
-    record_buf_t record_buffer;
-    record_buf_reset(&record_buffer);
+    record_buf_t TTTRRecord;
+    record_buf_reset(&TTTRRecord);
     
     uint64_t oflcorrection = 0;
     uint64_t timetag = 0;
@@ -874,11 +901,11 @@ void calculate_g2_ring(FILE* filehandle, long long record_type, int end_of_heade
     
     // Read all the photons
     photon_bool = next_photon(filehandle, parser, RecNum, NumRecords,
-                              &record_buffer, &oflcorrection, &timetag, &channel);
+                              &TTTRRecord, &oflcorrection, &timetag, &channel);
     
     while(photon_bool==1 && *RecNum < RecNum_stop){
         photon_bool = next_photon(filehandle, parser, RecNum, NumRecords,
-                                  &record_buffer, &oflcorrection, &timetag, &channel);
+                                  &TTTRRecord, &oflcorrection, &timetag, &channel);
         
         if (channel == channel_start) {
             circular_buf_put(&cbuf, timetag);
@@ -902,3 +929,4 @@ void calculate_g2_ring(FILE* filehandle, long long record_type, int end_of_heade
     }
     free(cbuf.buffer);
 }
+
