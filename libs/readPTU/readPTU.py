@@ -24,7 +24,8 @@ import struct
 import mmap
 import time
 import collections as coll
-from analysis.libs.readPTU._readTTTRRecords import ffi, lib
+# from analysis.libs.readPTU._readTTTRRecords import ffi, lib
+from _readTTTRRecords import ffi, lib
 
 
 class PTUfile():
@@ -450,9 +451,9 @@ if __name__ == '__main__':
     g2_coincidence_window = 1e6  # in picoseconds
     g2_post_selec_ranges = [[4e5,1e6]]  # in record numbers
 
-    # filename = r'/Users/garfield/Downloads/default.ptu'
+    filename = r'/Users/garfield/Downloads/test_big.ptu'
 
-    filename = r'/Users/raphaelproux/Downloads/test_big.ptu'
+    # filename = r'/Users/raphaelproux/Downloads/test_big.ptu'
 
     with PTUfile(filename) as ptu_file:
         ptu_file.print_header()
@@ -472,19 +473,19 @@ if __name__ == '__main__':
 
         # pl.savetxt('timetrace.txt', pl.array([timetrace_x, timetrace_y, timetrace_recnum]).transpose(), delimiter='\t')
 
-        # pl.figure()
-        # pl.plot(timetrace_x, timetrace_y)
-        # pl.xlabel('Time (ps)')
-        # pl.ylabel('Counts/{} s'.format(timetrace_resolution))
-        # pl.title('Timetrace')
-        # pl.figure()
-        # pl.plot(timetrace_x, timetrace_recnum)
-        # pl.xlabel('Time (ps)')
-        # pl.ylabel('Record number')
-        # pl.title('Record number vs measurement time')
+        pl.figure()
+        pl.plot(timetrace_x, timetrace_y)
+        pl.xlabel('Time (ps)')
+        pl.ylabel('Counts/{} s'.format(timetrace_resolution))
+        pl.title('Timetrace')
+        pl.figure()
+        pl.plot(timetrace_x, timetrace_recnum)
+        pl.xlabel('Time (ps)')
+        pl.ylabel('Record number')
+        pl.title('Record number vs measurement time')
         # pl.figure()
         # pl.plot(histo_x, histo_y)
         # pl.xlabel('Delay (ps)')
         # pl.ylabel('Coincidence counts/{} ps'.format(g2_resolution))
         # pl.title('g2 measurement')
-        # pl.show()
+        pl.show()

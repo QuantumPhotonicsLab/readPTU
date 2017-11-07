@@ -28,22 +28,19 @@ static inline void ParseHHT2_HH2(uint32_t record, int *restrict channel, uint64_
 typedef struct {
     uint32_t records[RECORD_CHUNK];
     size_t head;
-    size_t count;
 } record_buf_t;
 
 typedef void (*recordParser)(uint32_t, int*, uint64_t*, uint64_t*);
 
-void record_buf_reset(record_buf_t *buffer) {
+static inline void record_buf_reset(record_buf_t *buffer) {
     buffer->head = 0;
-    buffer->count = 0;
 }
 
 static inline void record_buf_pop(record_buf_t *restrict buffer, recordParser parser,
                                   uint64_t *restrict timetag, int *restrict channel,
                                   uint64_t *restrict oflcorrection) {
     // we are going to hide the swith in here
-    uint32_t rec = buffer->records[buffer->head];
-    (*parser)(rec, channel, timetag, oflcorrection);
+    (*parser)(buffer->records[buffer->head], channel, timetag, oflcorrection);
     buffer->head += 1;
 }
 
@@ -307,21 +304,21 @@ static inline void ParseHHT2_HH2(uint32_t record, int *restrict channel,
     /*
      ProcessHHT2() reads the next records of a file until it finds a photon, and then returns.
      Inputs:
-     filehandle         FILE pointer with an open record file to read the photons
-     HHVersion          Hydrahard version 1 or 2. Depends on record type specification in the header.
-     oflcorrection      pointer to an unsigned integer 64 bits. Will record the time correction in the timetags due to overflow (see output for details).
-     buffer             buffer from which to read the next record (file chunk read buffer)
+         filehandle         FILE pointer with an open record file to read the photons
+         HHVersion          Hydrahard version 1 or 2. Depends on record type specification in the header.
+         oflcorrection      pointer to an unsigned integer 64 bits. Will record the time correction in the timetags due to overflow (see output for details).
+         buffer             buffer from which to read the next record (file chunk read buffer)
      Outputs:
-     filehandle         FILE pointer with reader at the position of last analysed record
-     oflcorrection      offset time on the timetags read in the file, due to overflows.
-     buffer             buffer of the next chunk of records, containing for each a timetag and a channel number.
-     If a photon is read, timetag of this photon. Otherwise, timetag == 0. It already includes the overflow correction
-     so the value can be used directly.
-     If a photon is read, channel of this photon. 0 will usually be sync and >= 1 other input channels. If the record is
-     not a photon, channel == -1 for an overflow record, -2 for a marker record.
+         filehandle         FILE pointer with reader at the position of last analysed record
+         oflcorrection      offset time on the timetags read in the file, due to overflows.
+         buffer             buffer of the next chunk of records, containing for each a timetag and a channel number.
+                            If a photon is read, timetag of this photon. Otherwise, timetag == 0. It already includes the overflow correction 
+                                so the value can be used directly.
+                            If a photon is read, channel of this photon. 0 will usually be sync and >= 1 other input channels. If the record is 
+                                not a photon, channel == -1 for an overflow record, -2 for a marker record.
      */
     /* FUNCTION TESTED */
-    
+
     const uint64_t T2WRAPAROUND_V2 = 33554432;
     union{
         uint32_t   allbits;
@@ -330,42 +327,36 @@ static inline void ParseHHT2_HH2(uint32_t record, int *restrict channel,
             unsigned special  :1; // or sync, if channel==0
         } bits;
     } T2Rec;
-    
+
     T2Rec.allbits = record;
     
-    if(T2Rec.bits.special==1)
-    {
-        if(T2Rec.bits.channel==0x3F) //an overflow record
-        {
+    if(T2Rec.bits.special==1) {
+        if(T2Rec.bits.channel==0x3F) {//an overflow record
             //number of overflows is stored in timetag
-            if(T2Rec.bits.timetag==0) //if it is zero it is an old style single overflow
-            {
+            if(T2Rec.bits.timetag==0) {//if it is zero it is an old style single overflow
                 *oflcorrection += T2WRAPAROUND_V2;  //should never happen with new Firmware! ///
             }
-            else
-            {
+            else {
                 *oflcorrection += T2WRAPAROUND_V2 * T2Rec.bits.timetag; ///
             }
             
             *timetag = 0;
             *channel = -1;
-        }
+            return;
+        } else
         
-        if((T2Rec.bits.channel>=1)&&(T2Rec.bits.channel<=15)) //markers
-        {
+        if(T2Rec.bits.channel==0) {//sync
+            *timetag = *oflcorrection + T2Rec.bits.timetag;
+            *channel = T2Rec.bits.channel;
+            return;
+        } else if(T2Rec.bits.channel<=15) {//markers
             //Note that actual marker tagging accuracy is only some ns.
             *timetag = *oflcorrection + T2Rec.bits.timetag;
             *channel = -2;
-        }
-        
-        else if(T2Rec.bits.channel==0) //sync
-        {
-            *timetag = *oflcorrection + T2Rec.bits.timetag;
-            *channel = T2Rec.bits.channel;
-        }
+            return;
+        } 
     }
-    else //regular input channel
-    {
+    else {//regular input channel
         *timetag = *oflcorrection + T2Rec.bits.timetag;
         *channel = T2Rec.bits.channel + 1;
     }
@@ -462,7 +453,7 @@ static inline int next_photon(FILE* filehandle, recordParser parser, uint64_t *r
      */
     
     // We may sacrifice up to RECORD_CHUNK records at the end of the file in order to simplify the logic of the function.
-    if (buffer->head < RECORD_CHUNK && buffer->count > 0) { // still have records on buffer
+    if (buffer->head < RECORD_CHUNK) { // still have records on buffer
     pop_record:
         do {
             record_buf_pop(buffer, parser, timetag, channel, oflcorrection);
@@ -472,21 +463,18 @@ static inline int next_photon(FILE* filehandle, recordParser parser, uint64_t *r
         if (channel >= 0) {
             return 1;
         }
-        else { // we run out of buffer before finding a photon
-            goto replenish_buffer;
-        }
+        // we run out of buffer before finding a photon
+        goto replenish_buffer;
+
     } else {
     replenish_buffer:
         // we need to replenish the photon pool
         record_buf_reset(buffer);
         if ((*RecNum+RECORD_CHUNK) < NumRecords) {
             fread(buffer->records, RECORD_CHUNK, sizeof(uint32_t), filehandle);
-            buffer->count = RECORD_CHUNK;
             goto pop_record;
         }
-        else {
-            *RecNum = NumRecords - 1;  // for algorithms detecting end of file using RecNum
-        }
+        *RecNum = NumRecords - 1;  // for algorithms detecting end of file using RecNum
         return 0; // if we didn't had enough records to replenish
         // the buffer we are done.
     }
@@ -560,6 +548,7 @@ void timetrace(FILE* filehandle, long long record_type, int end_of_header,
     // reset file reader
     c_fseek(filehandle, end_of_header);
     
+    fread(TTTRRecord.records, RECORD_CHUNK, sizeof(uint32_t), filehandle);
     for (i = 0; i < nb_of_bins; i++)
     {
         time_vector[i] = i * time_bin_length;
