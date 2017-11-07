@@ -622,7 +622,7 @@ void chunk_fread(FILE* filehandle, recordParser parser, record_buf_t *buffer,  u
 }
 
 
-void ParsePHT2(uint32_t *record ,record_buf_t *buffer,  uint64_t *oflcorrection)
+static void ParsePHT2(uint32_t *record ,record_buf_t *buffer,  uint64_t *oflcorrection)
 {
     /*
      ProcessPHT2() reads the next records of a file until it finds a photon, and then returns.
@@ -689,7 +689,7 @@ void ParsePHT2(uint32_t *record ,record_buf_t *buffer,  uint64_t *oflcorrection)
     }
 }
 
-void ParseHHT2_HH1(uint32_t *record, record_buf_t *buffer,  uint64_t *oflcorrection)
+static void ParseHHT2_HH1(uint32_t *record, record_buf_t *buffer,  uint64_t *oflcorrection)
 {
     /*
      ProcessHHT2() reads the next records of a file until it finds a photon, and then returns.
@@ -750,7 +750,7 @@ void ParseHHT2_HH1(uint32_t *record, record_buf_t *buffer,  uint64_t *oflcorrect
     }
 }
 
-void ParseHHT2_HH2(uint32_t *record, record_buf_t *buffer,  uint64_t *oflcorrection)
+static void ParseHHT2_HH2(uint32_t *record, record_buf_t *buffer,  uint64_t *oflcorrection)
 {
     /*
      ProcessHHT2() reads the next records of a file until it finds a photon, and then returns.
@@ -875,8 +875,9 @@ recordParser select_parser(long long record_type)
             //ProcessHHT3(TTTRRecord, 2);
             break;
         default:
-            return 0;
+            return &ParseHHT2_HH2;
     }
+    return &ParseHHT2_HH2;
 }
 
 int next_photon(FILE* filehandle, recordParser parser, uint64_t *RecNum, uint64_t NumRecords, record_buf_t *buffer, uint64_t *oflcorrection, uint64_t *timetag, int *channel)

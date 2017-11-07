@@ -452,7 +452,7 @@ if __name__ == '__main__':
 
     # filename = r'/Users/garfield/Downloads/default.ptu'
 
-    filename = r'/Users/raphaelproux/Desktop/TTTR/t2htr2a1loc2.ptu'
+    filename = r'/Users/raphaelproux/Downloads/test_big.ptu'
 
     with PTUfile(filename) as ptu_file:
         ptu_file.print_header()
@@ -463,28 +463,28 @@ if __name__ == '__main__':
         stop_time = time.time()
         print('timetrace calculation took', stop_time - start_time, 's')
 
-        pl.savetxt('timetrace.txt', pl.array([timetrace_x, timetrace_y, timetrace_recnum]).transpose(), delimiter='\t')
+        # pl.savetxt('timetrace.txt', pl.array([timetrace_x, timetrace_y, timetrace_recnum]).transpose(), delimiter='\t')
 
-        start_time = time.time()
-        histo_x, histo_y = ptu_meas.calculate_g2(1000000,10000, post_selec_ranges=g2_post_selec_ranges)  #, fast=False)
-        stop_time = time.time()
-        print('g2 calculation took', stop_time - start_time, 's')
+        # start_time = time.time()
+        # histo_x, histo_y = ptu_meas.calculate_g2(1000000,10000, post_selec_ranges=g2_post_selec_ranges)  #, fast=False)
+        # stop_time = time.time()
+        # print('g2 calculation took', stop_time - start_time, 's')
 
-        pl.savetxt('timetrace.txt', pl.array([timetrace_x, timetrace_y, timetrace_recnum]).transpose(), delimiter='\t')
+        # pl.savetxt('timetrace.txt', pl.array([timetrace_x, timetrace_y, timetrace_recnum]).transpose(), delimiter='\t')
 
-        pl.figure()
-        pl.plot(timetrace_x, timetrace_y)
-        pl.xlabel('Time (ps)')
-        pl.ylabel('Counts/{} s'.format(timetrace_resolution))
-        pl.title('Timetrace')
-        pl.figure()
-        pl.plot(timetrace_x, timetrace_recnum)
-        pl.xlabel('Time (ps)')
-        pl.ylabel('Record number')
-        pl.title('Record number vs measurement time')
-        pl.figure()
-        pl.plot(histo_x, histo_y)
-        pl.xlabel('Delay (ps)')
-        pl.ylabel('Coincidence counts/{} ps'.format(g2_resolution))
-        pl.title('g2 measurement')
-        pl.show()
+        # pl.figure()
+        # pl.plot(timetrace_x, timetrace_y)
+        # pl.xlabel('Time (ps)')
+        # pl.ylabel('Counts/{} s'.format(timetrace_resolution))
+        # pl.title('Timetrace')
+        # pl.figure()
+        # pl.plot(timetrace_x, timetrace_recnum)
+        # pl.xlabel('Time (ps)')
+        # pl.ylabel('Record number')
+        # pl.title('Record number vs measurement time')
+        # pl.figure()
+        # pl.plot(histo_x, histo_y)
+        # pl.xlabel('Delay (ps)')
+        # pl.ylabel('Coincidence counts/{} ps'.format(g2_resolution))
+        # pl.title('g2 measurement')
+        # pl.show()
