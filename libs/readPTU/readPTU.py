@@ -24,8 +24,8 @@ import struct
 import mmap
 import time
 import collections as coll
-# from analysis.libs.readPTU._readTTTRRecords import ffi, lib
-from _readTTTRRecords import ffi, lib
+from analysis.libs.readPTU._readTTTRRecords import ffi, lib
+#from _readTTTRRecords import ffi, lib
 
 
 class PTUfile():
@@ -451,7 +451,7 @@ if __name__ == '__main__':
     g2_coincidence_window = 1e6  # in picoseconds
     g2_post_selec_ranges = [[4e5,1e6]]  # in record numbers
 
-    filename = r'/Users/garfield/Downloads/test_big.ptu'
+    filename = r'/Users/raphaelproux/Downloads/test_big.ptu'
 
     # filename = r'/Users/raphaelproux/Downloads/test_big.ptu'
 
