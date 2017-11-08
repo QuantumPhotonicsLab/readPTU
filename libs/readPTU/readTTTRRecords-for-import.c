@@ -15,7 +15,7 @@
 #define rtTimeHarp260PT2 0x00010206    // (SubID = $00 ,RecFmt: $01) (V1), T-Mode: $02 (T2), HW: $06 (TimeHarp260P)
 
 // How big the file chunking will be
-#define RECORD_CHUNK 1024
+#define RECORD_CHUNK 1024*8
 
 // Prototypes
 static inline void ParsePHT2(uint32_t record, int *restrict channel, uint64_t *restrict timetag, uint64_t *restrict oflcorrection);
@@ -494,15 +494,16 @@ void timetrace(FILE* filehandle, long long record_type, int end_of_header,
 
 //     uint64_t dummy_counter = 0;
 
-//     // reset file reader
+//     recordParser parser = NULL;
+//     select_parser(&parser, record_type);
+
 //     c_fseek(filehandle, end_of_header);
 
-//     photon_bool = next_photon(filehandle, record_type, RecNum, NumRecords,
+//     photon_bool = next_photon(filehandle, parser, RecNum, NumRecords,
 //                               &TTTRRecord, &oflcorrection, &timetag, &channel);
-
 //     while(photon_bool) {
 //         dummy_counter += 1;
-//         photon_bool = next_photon(filehandle, record_type, RecNum, NumRecords,
+//         photon_bool = next_photon(filehandle, parser, RecNum, NumRecords,
 //                                   &TTTRRecord, &oflcorrection, &timetag, &channel);
 //     }
 
