@@ -18,9 +18,9 @@
 #define RECORD_CHUNK 1024*8
 
 // Prototypes
-static inline void ParsePHT2(uint32_t record, int *restrict channel, uint64_t *restrict timetag, uint64_t *restrict oflcorrection);
-static inline void ParseHHT2_HH1(uint32_t record, int *restrict channel, uint64_t *restrict timetag, uint64_t *restrict oflcorrection);
-static inline void ParseHHT2_HH2(uint32_t record, int *restrict channel, uint64_t *restrict timetag, uint64_t *restrict oflcorrection);
+static inline void ParsePHT2(uint32_t record, int * channel, uint64_t * timetag, uint64_t * oflcorrection);
+static inline void ParseHHT2_HH1(uint32_t record, int * channel, uint64_t * timetag, uint64_t * oflcorrection);
+static inline void ParseHHT2_HH2(uint32_t record, int * channel, uint64_t * timetag, uint64_t * oflcorrection);
 
 // ================================================
 // Buffer for keeping track of records
@@ -36,9 +36,9 @@ static inline void record_buf_reset(record_buf_t *buffer) {
     buffer->head = 0;
 }
 
-static inline void record_buf_pop(record_buf_t *restrict buffer, recordParser parser,
-                                  uint64_t *restrict timetag, int *restrict channel,
-                                  uint64_t *restrict oflcorrection) {
+static inline void record_buf_pop(record_buf_t * buffer, recordParser parser,
+                                  uint64_t * timetag, int * channel,
+                                  uint64_t * oflcorrection) {
     // we are going to hide the swith in here
     (*parser)(buffer->records[buffer->head], channel, timetag, oflcorrection);
     buffer->head += 1;
@@ -165,8 +165,8 @@ int c_fseek(FILE *filehandle, long int offset)
     return fseek(filehandle, offset, SEEK_SET);
 }
 
-static inline void ParsePHT2(uint32_t record, int *restrict channel,
-                             uint64_t *restrict timetag, uint64_t *restrict oflcorrection)
+static inline void ParsePHT2(uint32_t record, int * channel,
+                             uint64_t * timetag, uint64_t * oflcorrection)
 {
     /*
      ProcessPHT2() reads the next records of a file until it finds a photon, and then returns.
@@ -235,8 +235,8 @@ static inline void ParsePHT2(uint32_t record, int *restrict channel,
     }
 }
 
-static inline void ParseHHT2_HH1(uint32_t record, int *restrict channel,
-                                 uint64_t *restrict timetag, uint64_t *restrict oflcorrection)
+static inline void ParseHHT2_HH1(uint32_t record, int * channel,
+                                 uint64_t * timetag, uint64_t * oflcorrection)
 {
     /*
      ProcessHHT2() reads the next records of a file until it finds a photon, and then returns.
@@ -298,8 +298,8 @@ static inline void ParseHHT2_HH1(uint32_t record, int *restrict channel,
     }
 }
 
-static inline void ParseHHT2_HH2(uint32_t record, int *restrict channel,
-                                 uint64_t *restrict timetag, uint64_t *restrict oflcorrection)
+static inline void ParseHHT2_HH2(uint32_t record, int * channel,
+                                 uint64_t * timetag, uint64_t * oflcorrection)
 {
     /*
      ProcessHHT2() reads the next records of a file until it finds a photon, and then returns.
@@ -425,9 +425,9 @@ void RecordHHT2(FILE* filehandle)
 }
 
 
-static inline int next_photon(FILE* filehandle, recordParser parser, uint64_t *restrict RecNum,
-                              uint64_t NumRecords, record_buf_t *restrict buffer,
-                              uint64_t *restrict oflcorrection, uint64_t *restrict timetag, int *restrict channel)
+static inline int next_photon(FILE* filehandle, recordParser parser, uint64_t * RecNum,
+                              uint64_t NumRecords, record_buf_t * buffer,
+                              uint64_t * oflcorrection, uint64_t * timetag, int * channel)
 {
     /*
      next_photon() reads the next records of a file until it finds a photon, and then returns.
