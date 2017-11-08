@@ -15,12 +15,12 @@
 #define rtTimeHarp260PT2 0x00010206    // (SubID = $00 ,RecFmt: $01) (V1), T-Mode: $02 (T2), HW: $06 (TimeHarp260P)
 
 // How big the file chunking will be
-#define RECORD_CHUNK 1024*8
+#define RECORD_CHUNK 1024
 
 // Prototypes
-static inline void ParsePHT2(uint32_t record, int * channel, uint64_t * timetag, uint64_t * oflcorrection);
-static inline void ParseHHT2_HH1(uint32_t record, int * channel, uint64_t * timetag, uint64_t * oflcorrection);
-static inline void ParseHHT2_HH2(uint32_t record, int * channel, uint64_t * timetag, uint64_t * oflcorrection);
+void ParsePHT2(uint32_t record, int * channel, uint64_t * timetag, uint64_t * oflcorrection);
+void ParseHHT2_HH1(uint32_t record, int * channel, uint64_t * timetag, uint64_t * oflcorrection);
+void ParseHHT2_HH2(uint32_t record, int * channel, uint64_t * timetag, uint64_t * oflcorrection);
 
 // ================================================
 // Buffer for keeping track of records
@@ -32,11 +32,11 @@ typedef struct {
 
 typedef void (*recordParser)(uint32_t, int*, uint64_t*, uint64_t*);
 
-static inline void record_buf_reset(record_buf_t *buffer) {
+void record_buf_reset(record_buf_t *buffer) {
     buffer->head = 0;
 }
 
-static inline void record_buf_pop(record_buf_t * buffer, recordParser parser,
+void record_buf_pop(record_buf_t * buffer, recordParser parser,
                                   uint64_t * timetag, int * channel,
                                   uint64_t * oflcorrection) {
     // we are going to hide the swith in here
@@ -165,7 +165,7 @@ int c_fseek(FILE *filehandle, long int offset)
     return fseek(filehandle, offset, SEEK_SET);
 }
 
-static inline void ParsePHT2(uint32_t record, int * channel,
+void ParsePHT2(uint32_t record, int * channel,
                              uint64_t * timetag, uint64_t * oflcorrection)
 {
     /*
@@ -235,7 +235,7 @@ static inline void ParsePHT2(uint32_t record, int * channel,
     }
 }
 
-static inline void ParseHHT2_HH1(uint32_t record, int * channel,
+void ParseHHT2_HH1(uint32_t record, int * channel,
                                  uint64_t * timetag, uint64_t * oflcorrection)
 {
     /*
@@ -298,7 +298,7 @@ static inline void ParseHHT2_HH1(uint32_t record, int * channel,
     }
 }
 
-static inline void ParseHHT2_HH2(uint32_t record, int * channel,
+void ParseHHT2_HH2(uint32_t record, int * channel,
                                  uint64_t * timetag, uint64_t * oflcorrection)
 {
     /*
@@ -425,7 +425,7 @@ void RecordHHT2(FILE* filehandle)
 }
 
 
-static inline int next_photon(FILE* filehandle, recordParser parser, uint64_t * RecNum,
+int next_photon(FILE* filehandle, recordParser parser, uint64_t * RecNum,
                               uint64_t NumRecords, record_buf_t * buffer,
                               uint64_t * oflcorrection, uint64_t * timetag, int * channel)
 {
