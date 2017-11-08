@@ -396,7 +396,7 @@ class PTUmeasurement():
             for i in range(nb_of_bins):
                 histogram[i] += c_histogram[i]
 
-        time_vector = [time for time in c_time_vector]
+        time_vector = [float(time) * self.meas.globres for time in c_time_vector]
 
         return pl.array(time_vector[:-1]), pl.array(histogram)
 
@@ -433,7 +433,7 @@ def construct_postselect_vector(timetrace_y, timetrace_recnum, threshold, above=
     if add_first_time:
         post_selec_ranges = pl.insert(post_selec_ranges, 0, 0).astype(int)
     if len(post_selec_ranges) % 2 != 0:  # odd length means we need to add the end time
-        post_selec_ranges = pl.append(post_selec_ranges, len(timetrace_x) - 1).astype(int)
+        post_selec_ranges = pl.append(post_selec_ranges, len(timetrace_y) - 1).astype(int)
     
     post_selec_ranges = post_selec_ranges.reshape((-1,2))
     recnum_post_selec_ranges = [[timetrace_recnum[post_selec_range[0]], timetrace_recnum[post_selec_range[1]]] for post_selec_range in post_selec_ranges]
