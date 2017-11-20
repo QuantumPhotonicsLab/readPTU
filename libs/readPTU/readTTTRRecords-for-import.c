@@ -129,35 +129,23 @@ static inline void *timetrace_section(void *arguments) {
 
     bool photon_arrived = true;
     uint64_t RecNum = args->RecNum_start;
-    uint64_t end_of_bin = 0;
-    int photon_counter = 0;
+    uint64_t end_of_bin;
 
     fread(TTTRRecord.records, RECORD_CHUNK, sizeof(uint32_t), filehandle);
-    for (int i = 0; i < args->n_bins; i++)
+    int photon_counter=0;
+    for (int i = 0; i < args->n_bins && photon_arrived; i++)
     {
         end_of_bin = (i+1) * args->time_bin_length;
-        // the last timetag read is in the bin
-        if (timetag < end_of_bin) {
-            photon_counter = 0;
+        photon_counter = 0;
+        while (timetag < end_of_bin) {
             photon_arrived = next_photon(filehandle, &RecNum, args->RecNum_stop,
-                                      &TTTRRecord, &oflcorrection, &timetag, &channel);
-            while(photon_arrived) {
-                if(timetag < end_of_bin) {  // photon is in the current bin
-                    photon_counter += 1;
-                    photon_arrived = next_photon(filehandle, &RecNum, args->RecNum_stop,
-                                          &TTTRRecord, &oflcorrection, &timetag, &channel);
-                }
-                else {  // belongs to some further bin (CAUTION: may not be the one immediately after)
-                    args->ptr_recnum[i] = RecNum;
-                    args->ptr_trace[i] = photon_counter;
-                    break;
-                }
-            }
-            if (!photon_arrived) {  // for the last time bin
-                args->ptr_recnum[i] = RecNum;
-                fclose(filehandle);
-                return NULL;
-            }
+                                         &TTTRRecord, &oflcorrection, &timetag, &channel);
+            photon_counter++;
+        }
+
+        if (photon_arrived) { // the last incomplete bin is discarded
+            args->ptr_recnum[i] = RecNum;
+            args->ptr_trace[i] = photon_counter;
         }
     }
 
