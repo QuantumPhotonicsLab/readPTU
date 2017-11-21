@@ -17,6 +17,69 @@ int c_fseek(FILE *filehandle, long int offset)
     return fseek(filehandle, offset, SEEK_SET);
 }
 
+// static inline bool next_photon(FILE* filehandle, uint64_t * RecNum,
+//                                uint64_t StopRecord, record_buf_t *buffer,
+//                                uint64_t *oflcorrection, uint64_t *timetag, int *channel)
+// {
+    
+//      next_photon() reads the next records of a file until it finds a photon, and then returns.
+//      Inputs:
+//      filehandle         FILE pointer with an open record file to read the photons
+//      RecNum             pointer to the index of the record being read
+//      StopRecord         Last record number of interest
+//      buffer             pointer to a record_buf_t structure which will be used for chunk file reading
+//      oflcorrection      pointer to an unsigned integer 64 bits. Will record the
+//                         time correction in the timetags due to overflow.
+//      timetag            pointer to an unsigned integer 64 bits. Timetag of the
+//                         next photon (see outputs for details).
+//      channel            pointer to an integer. Channel of the next photon (see outputs for details).
+
+//      Outputs:
+//      filehandle         FILE pointer with reader at the position of last analysed record
+//      RecNum             index of last analysed record
+//      oflcorrection      offset time on the timetags read in the file, due to overflows. Should not be used.
+//      timetag            timetag of the last photon read. It already includes the
+//                         overflow correction so the value can  be used directly.
+//      channel            channel of the last photon read. 0 will usually be
+//                         sync and >= 1 other input channels.
+//      Returns:
+//      1 when found a photon,
+//      0 when reached end of file.
+     
+    
+//     if (buffer->head < RECORD_CHUNK) { // still have records on buffer
+//     pop_record:
+//         do {
+//             // This .c file is preprocessed by _readTTTRecords_build.py by
+//             // replacing the ##parser## tag with different parsers. This
+//             // replacing makes the file into a valid C file. By doing this
+//             // we can easily generate one library per record type. The ultimate
+//             // reason is to avoid using either a switch statment or calling a
+//             // a function via a function pointer inside a hot loop.
+//             Parse##parser##(buffer->records[buffer->head], channel, timetag, oflcorrection);
+//             buffer->head++;
+//             *RecNum += 1;
+//         } while(*channel < 0 && buffer->head < RECORD_CHUNK && *RecNum < StopRecord);
+        
+//         if (*RecNum == StopRecord) { // run out of records
+//             *RecNum = StopRecord-1;
+//             return false;
+//         }
+
+//         if (channel >= 0) { // found a photon
+//             return true;
+//         }
+//         // we run out of buffer before finding a photon
+//         goto replenish_buffer;
+
+//     } else {
+//     replenish_buffer:
+//         buffer->head = 0;
+//         fread(buffer->records, RECORD_CHUNK, sizeof(uint32_t), filehandle);
+//         goto pop_record;
+//     }
+// }
+
 static inline bool next_photon(FILE* filehandle, uint64_t * RecNum,
                                uint64_t StopRecord, record_buf_t *buffer,
                                uint64_t *oflcorrection, uint64_t *timetag, int *channel)
@@ -46,38 +109,33 @@ static inline bool next_photon(FILE* filehandle, uint64_t * RecNum,
      1 when found a photon,
      0 when reached end of file.
      */
-    
-    if (buffer->head < RECORD_CHUNK) { // still have records on buffer
     pop_record:
-        do {
-            // This .c file is preprocessed by _readTTTRecords_build.py by
-            // replacing the ##parser## tag with different parsers. This
-            // replacing makes the file into a valid C file. By doing this
-            // we can easily generate one library per record type. The ultimate
-            // reason is to avoid using either a switch statment or calling a
-            // a function via a function pointer inside a hot loop.
-            Parse##parser##(buffer->records[buffer->head], channel, timetag, oflcorrection);
-            buffer->head++;
-            *RecNum += 1;
-        } while(*channel < 0 && buffer->head < RECORD_CHUNK && *RecNum < StopRecord);
-        
-        if (*RecNum == StopRecord) { // run out of records
-            *RecNum = StopRecord-1;
-            return false;
-        }
-
-        if (channel >= 0) { // found a photon
-            return true;
-        }
-        // we run out of buffer before finding a photon
-        goto replenish_buffer;
-
-    } else {
-    replenish_buffer:
-        buffer->head = 0;
-        fread(buffer->records, RECORD_CHUNK, sizeof(uint32_t), filehandle);
-        goto pop_record;
+    while(*channel < 0 && buffer->head < RECORD_CHUNK && *RecNum < StopRecord) {
+        /* This .c file is preprocessed by _readTTTRecords_build.py by
+        replacing the ##parser## tag with different parsers. This
+        replacing makes the file into a valid C file. By doing this
+        we can easily generate one library per record type. The ultimate
+        reason is to avoid using either a switch statment or calling a
+        a function via a function pointer inside a hot loop.*/
+        Parse##parser##(buffer->records[buffer->head], channel, timetag, oflcorrection);
+        buffer->head++;
+        *RecNum += 1;
     }
+
+    if (*RecNum == StopRecord) { // run out of records
+        *RecNum = StopRecord-1;
+        return false;
+    }
+
+    if (channel >= 0) { // found a photon
+        return true;
+    }
+
+    // if we reach this point we have run out of records in buffer and need to
+    // replenish it
+    buffer->head = 0;
+    fread(buffer->records, RECORD_CHUNK, sizeof(uint32_t), filehandle);
+    goto pop_record;
 }
 
 
