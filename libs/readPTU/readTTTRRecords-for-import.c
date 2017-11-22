@@ -358,7 +358,7 @@ static inline void *g2_ring_section(void *arguments) {
     uint64_t correlation_window = args->correlation_window;
 
     int i;  // index for the loop over circular buffer
-    bool photon_arrived = true;
+    bool photon_arrived;
     uint64_t RecNum;
     uint64_t RecNum_STOP;
 
@@ -379,10 +379,8 @@ static inline void *g2_ring_section(void *arguments) {
         // prefill circular buffer
         fread(TTTRRecord.records, RECORD_CHUNK, sizeof(uint32_t), filehandle);
         TTTRRecord.head = 0;
-        photon_arrived = next_photon(filehandle, &RecNum, RecNum_STOP,
-                              &TTTRRecord, &oflcorrection, &timetag, &channel);
-    
-        while(photon_arrived && RecNum < RecNum_STOP){
+        photon_arrived = true;
+        while(photon_arrived){
             photon_arrived = next_photon(filehandle, &RecNum, RecNum_STOP,
                               &TTTRRecord, &oflcorrection, &timetag, &channel);
             
