@@ -17,6 +17,7 @@ int c_fseek(FILE *filehandle, long int offset)
     return fseek(filehandle, offset, SEEK_SET);
 }
 
+
 static inline bool next_photon(FILE* filehandle, uint64_t * RecNum,
                                uint64_t StopRecord, record_buf_t *buffer,
                                uint64_t *oflcorrection, uint64_t *timetag, int *channel)
@@ -46,34 +47,43 @@ static inline bool next_photon(FILE* filehandle, uint64_t * RecNum,
      1 when found a photon,
      0 when reached end of file.
      */
+    
+    if (buffer->head < RECORD_CHUNK) { // still have records on buffer
     pop_record:
-    while(*channel < 0 && buffer->head < RECORD_CHUNK && *RecNum < StopRecord) {
-        /* This .c file is preprocessed by _readTTTRecords_build.py by
-        replacing the ##parser## tag with different parsers. This
-        replacing makes the file into a valid C file. By doing this
-        we can easily generate one library per record type. The ultimate
-        reason is to avoid using either a switch statment or calling a
-        a function via a function pointer inside a hot loop.*/
-        Parse##parser##(buffer->records[buffer->head], channel, timetag, oflcorrection);
-        buffer->head++;
-        *RecNum += 1;
-    }
+        do {
+            // This .c file is preprocessed by _readTTTRecords_build.py by
+            // replacing the ##parser## tag with different parsers. This
+            // replacing makes the file into a valid C file. By doing this
+            // we can easily generate one library per record type. The ultimate
+            // reason is to avoid using either a switch statment or calling a
+            // a function via a function pointer inside a hot loop.
+            Parse##parser##(buffer->records[buffer->head], channel, timetag, oflcorrection);
+            buffer->head++;
+            *RecNum += 1;
+        } while(*channel < 0 && buffer->head < RECORD_CHUNK && *RecNum < StopRecord);
+        
+        if (*RecNum == StopRecord) { // run out of records
+            *RecNum = StopRecord-1;
+            return false;
+        }
 
-    if (*RecNum == StopRecord) { // run out of records
-        *RecNum = StopRecord-1;
-        return false;
-    }
+        if (channel >= 0) { // found a photon
+            return true;
+        }
+        // we run out of buffer before finding a photon
+        buffer->head = 0;
+        fread(buffer->records, RECORD_CHUNK, sizeof(uint32_t), filehandle);
+        goto pop_record;
+        goto replenish_buffer;
 
-    if (channel >= 0) { // found a photon
-        return true;
+    } else {
+    replenish_buffer:
+        buffer->head = 0;
+        fread(buffer->records, RECORD_CHUNK, sizeof(uint32_t), filehandle);
+        goto pop_record;
     }
-
-    // if we reach this point we have run out of records in buffer and need to
-    // replenish it
-    buffer->head = 0;
-    fread(buffer->records, RECORD_CHUNK, sizeof(uint32_t), filehandle);
-    goto pop_record;
 }
+
 
 
 // = = = = = = = = = = =//
@@ -299,6 +309,7 @@ static inline void *g2_fast_section(void *arguments) {
         fread(TTTRRecord.records, RECORD_CHUNK, sizeof(uint32_t), filehandle);
         TTTRRecord.head = 0;
         channel = -1;
+
         while(photon_arrived){
             // FIND NEXT START PHOTON
             while(photon_arrived && channel != channel_start){
