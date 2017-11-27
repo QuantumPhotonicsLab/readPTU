@@ -47,20 +47,17 @@ static inline bool next_photon(FILE* filehandle, uint64_t * RecNum,
      1 when found a photon,
      0 when reached end of file.
      */
-    
-    if (buffer->head < RECORD_CHUNK) { // still have records on buffer
     pop_record:
-        do {
-            // This .c file is preprocessed by _readTTTRecords_build.py by
-            // replacing the ##parser## tag with different parsers. This
-            // replacing makes the file into a valid C file. By doing this
-            // we can easily generate one library per record type. The ultimate
-            // reason is to avoid using either a switch statment or calling a
-            // a function via a function pointer inside a hot loop.
-            Parse##parser##(buffer->records[buffer->head], channel, timetag, oflcorrection);
-            buffer->head++;
-            *RecNum += 1;
-        } while(*channel < 0 && buffer->head < RECORD_CHUNK && *RecNum < StopRecord);
+    while (buffer->head < RECORD_CHUNK) { // still have records on buffer
+        // This .c file is preprocessed by _readTTTRecords_build.py by
+        // replacing the ##parser## tag with different parsers. This
+        // replacing makes the file into a valid C file. By doing this
+        // we can easily generate one library per record type. The ultimate
+        // reason is to avoid using either a switch statment or calling a
+        // a function via a function pointer inside a hot loop.
+        Parse##parser##(buffer->records[buffer->head], channel, timetag, oflcorrection);
+        buffer->head++;
+        *RecNum += 1;
         
         if (*RecNum == StopRecord) { // run out of records
             *RecNum = StopRecord-1;
@@ -70,18 +67,11 @@ static inline bool next_photon(FILE* filehandle, uint64_t * RecNum,
         if (channel >= 0) { // found a photon
             return true;
         }
-        // we run out of buffer before finding a photon
-        buffer->head = 0;
-        fread(buffer->records, RECORD_CHUNK, sizeof(uint32_t), filehandle);
-        goto pop_record;
-        goto replenish_buffer;
-
-    } else {
-    replenish_buffer:
-        buffer->head = 0;
-        fread(buffer->records, RECORD_CHUNK, sizeof(uint32_t), filehandle);
-        goto pop_record;
     }
+    // run out of buffer
+    buffer->head = 0;
+    fread(buffer->records, RECORD_CHUNK, sizeof(uint32_t), filehandle);
+    goto pop_record;
 }
 
 

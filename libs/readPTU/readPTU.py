@@ -488,7 +488,7 @@ if __name__ == '__main__':
 
         start_time = time.time()
         timetrace_x, timetrace_y, timetrace_recnum =\
-            ptu_meas.timetrace(resolution=timetrace_resolution)
+            ptu_meas.timetrace(resolution=timetrace_resolution, n_threads=4)
         stop_time = time.time()
         print('timetrace calculation took', stop_time - start_time, 's')
 
