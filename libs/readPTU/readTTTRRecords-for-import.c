@@ -269,14 +269,14 @@ static inline void *g2_fast_section(void *arguments) {
 
     // return values next photon
     uint64_t oflcorrection = 0;
-    uint64_t timetag = 0;
+    uint64_t start_time;
+    uint64_t stop_time;
     int channel = -1;
     
     // variables for g2 algo
     const int channel_start = args->channel_start;
     const int channel_stop = args->channel_stop;
-    uint64_t start_time = 0;
-    uint64_t stop_time = 0;
+    
     uint64_t i = 0;
     uint64_t delta=0;
     uint64_t correlation_window = args->correlation_window;
@@ -292,33 +292,29 @@ static inline void *g2_fast_section(void *arguments) {
         RecNum = args->RecNum_start[args->first_range + range_idx];
         RecNum_STOP = args->RecNum_stop[args->first_range + range_idx];
         c_fseek(filehandle,
-            (long int)(args->end_of_header + (4 * RecNum) ));
+               (long int)(args->end_of_header + (4 * RecNum)));
 
         // start g2 algo
         // prefill record buffer
         fread(TTTRRecord.records, RECORD_CHUNK, sizeof(uint32_t), filehandle);
         TTTRRecord.head = 0;
+        channel = -1;
         while(photon_arrived){
             // FIND NEXT START PHOTON
-            channel = -1;
             while(photon_arrived && channel != channel_start){
                 photon_arrived = next_photon(filehandle, &RecNum, RecNum_STOP,
-                              &TTTRRecord, &oflcorrection, &timetag, &channel);
+                                             &TTTRRecord, &oflcorrection, &start_time, &channel);
             }
+            // found start photon
 
-            start_time = timetag;
             // FIND NEXT STOP PHOTON
             while (photon_arrived && channel != channel_stop) {
                 photon_arrived = next_photon(filehandle, &RecNum, RecNum_STOP,
-                              &TTTRRecord, &oflcorrection, &timetag, &channel);
+                                             &TTTRRecord, &oflcorrection, &stop_time, &channel);
             }
-            // found a stop photon
-            if (channel == channel_stop) {
-                stop_time = timetag;
-            }
+            // found stop photon
             
             // ADD DELAY TO HISTOGRAM
-            // add occurence to result histogram if the delay is in the correlation window
             delta = stop_time - start_time;
             if (delta < correlation_window && photon_arrived) {
                 i = (uint64_t)(delta * nb_of_bins / correlation_window);
