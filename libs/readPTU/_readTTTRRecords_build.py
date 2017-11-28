@@ -10,12 +10,15 @@ from cffi import FFI
 from os import remove
 import setuptools  # necessary magic import for windows -- don't think, just accept it!
 
+# To add a new parsers just add the appropiate parser in parsers.c with the
+# name convention Parse____ where the gap correspongs to the record
+# type format name. Then add the same name to the list below and you are done!
+
+parsers = ['HHT2_HH1', 'HHT2_HH2', 'PHT2']
+
 with open('readTTTRRecords-for-import.c', 'r') as myfile:
     c_code = myfile.read()
-    c_code_HHT2_HH1 = c_code.replace("##parser##", "HHT2_HH1")
-    c_code_HHT2_HH2 = c_code.replace("##parser##", "HHT2_HH2")
-    c_code_PHT2 = c_code.replace("##parser##", "PHT2")
-
+    codes_dict = {k: c_code.replace("##parser##", k) for k in parsers}
 
 prototypes = r"""
     void timetrace(char filepath[], int end_of_header, uint64_t *RecNum, uint64_t NumRecords,
@@ -29,26 +32,12 @@ prototypes = r"""
     int c_fseek(FILE *, long int);"""
 
 if __name__ == "__main__":
-    ffibuilder = FFI()
-    ffibuilder.cdef(prototypes)
-    ffibuilder.set_source("_readTTTRRecords_HHT2_HH2", c_code_HHT2_HH2)
-    print('\nCompiling version HHT2_HH2')
-    ffibuilder.compile(verbose=True)
-    remove('_readTTTRRecords_HHT2_HH2.c')
-    remove('_readTTTRRecords_HHT2_HH2.o')
-
-    ffibuilder = FFI()
-    ffibuilder.cdef(prototypes)
-    ffibuilder.set_source("_readTTTRRecords_HHT2_HH1", c_code_HHT2_HH1)
-    print('\nCompiling version HHT2_HH1')
-    ffibuilder.compile(verbose=True)
-    remove("_readTTTRRecords_HHT2_HH1.c")
-    remove("_readTTTRRecords_HHT2_HH1.o")
-
-    ffibuilder = FFI()
-    ffibuilder.cdef(prototypes)
-    ffibuilder.set_source("_readTTTRRecords_PHT2", c_code_PHT2)
-    print('\nCompiling version PHT2')
-    ffibuilder.compile(verbose=True)
-    remove("_readTTTRRecords_PHT2.c")
-    remove("_readTTTRRecords_PHT2.o")
+    for code in codes_dict:
+        ffibuilder = FFI()
+        ffibuilder.cdef(prototypes)
+        ffibuilder.set_source("_readTTTRRecords_{}".format(code),
+                              codes_dict[code])
+        print('\nCompiling version {}'.format(code))
+        ffibuilder.compile(verbose=True)
+        remove('_readTTTRRecords_{}.c'.format(code))
+        remove('_readTTTRRecords_{}.o'.format(code))
