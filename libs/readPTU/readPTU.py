@@ -321,10 +321,7 @@ class PTUmeasurement():
         """
         self.meas = ptu_file
 
-    def timetrace(self, resolution=1, n_threads=2):
-        """ Go through file with trivial operation to see how fast we can
-        read all the records.
-        """
+    def _select_record_library(self):
         record_type = self.meas.rec_type[self.meas.record_type]
         # rtPicoHarpT3     = 0x00010303  rtPicoHarpT2     = 0x00010203
         # rtHydraHarpT3    = 0x00010304  rtHydraHarpT2    = 0x00010204
@@ -332,14 +329,22 @@ class PTUmeasurement():
         # rtTimeHarp260NT3 = 0x00010305  rtTimeHarp260NT2 = 0x00010205
         # rtTimeHarp260PT3 = 0x00010306  rtTimeHarp260PT2 = 0x00010206
         if record_type in [0x01010204, 0x00010205, 0x00010206]:
-            tt_f = HHT2_HH2_lib.timetrace
+            rec_lib = HHT2_HH2_lib
         elif record_type == 0x00010204:
-            tt_f = HHT2_HH1_lib.timetrace
+            rec_lib = HHT2_HH1_lib
         elif record_type == 0x00010203:
-            tt_f = PHT2_lib.timetrace
+            rec_lib = PHT2_lib
         else:
             print('Not implemented record type!')
             assert(0)
+
+        return rec_lib
+
+    def timetrace(self, resolution=1, n_threads=2):
+        """ Go through file with trivial operation to see how fast we can
+        read all the records.
+        """
+        tt_f = self._select_record_library().timetrace
 
         # resolution in "timetag unit" i.e. number of globres
         # globres is in seconds
@@ -394,21 +399,7 @@ class PTUmeasurement():
                      numpy array vector of histogram (number of start-stop
                         photon couples per delay time bin)
         """
-        record_type = self.meas.rec_type[self.meas.record_type]
-        # rtPicoHarpT3     = 0x00010303  rtPicoHarpT2     = 0x00010203
-        # rtHydraHarpT3    = 0x00010304  rtHydraHarpT2    = 0x00010204
-        # rtHydraHarp2T3   = 0x01010304  rtHydraHarp2T2   = 0x01010204
-        # rtTimeHarp260NT3 = 0x00010305  rtTimeHarp260NT2 = 0x00010205
-        # rtTimeHarp260PT3 = 0x00010306  rtTimeHarp260PT2 = 0x00010206
-        if record_type in [0x01010204, 0x00010205, 0x00010206]:
-            g2_f = HHT2_HH2_lib.calculate_g2
-        elif record_type in [0x00010204]:
-            g2_f = HHT2_HH1_lib.calculate_g2
-        elif record_type in [0x00010203]:
-            g2_f = PHT2_lib.calculate_g2
-        else:
-            print('Not implemented record type!')
-            assert(0)
+        g2_f = self._select_record_library().calculate_g2
 
         if mode == 'fast':
             mode_idx = 0

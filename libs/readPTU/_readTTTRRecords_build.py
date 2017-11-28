@@ -14,7 +14,8 @@ import setuptools  # necessary magic import for windows -- don't think, just acc
 # name convention Parse____ where the gap corresponds to the record
 # type format name. Then add the same name to the list below and you are done!
 
-# You will also have to add the new parser in readPTU.py
+# You will also have to add the new parser in readPTU.py in the method
+# _select_record_library of PTUmeasurement.
 
 # Finally as it is now the records are assumed to be 32 bits long. Using
 # the same conidtional compiling strategy as below this could be easily
