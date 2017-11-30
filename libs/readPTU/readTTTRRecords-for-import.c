@@ -345,13 +345,10 @@ static inline void *g2_ring_section(void *arguments) {
     uint64_t timetag = 0;
 
     // variables for g2 algo
-    uint64_t oldest_timetag;
     uint64_t delta, idx;
     const int nb_of_bins = args->n_bins;
     const int channel_start = args->channel_start;
     const int channel_stop = args->channel_stop;
-    uint64_t new_correlation_window;
-    uint64_t min_correlation_window = UINT64_MAX;
     uint64_t correlation_window = args->correlation_window;
 
     int i;  // index for the loop over circular buffer
@@ -359,10 +356,7 @@ static inline void *g2_ring_section(void *arguments) {
     uint64_t RecNum_STOP;
 
     // Prepare the circular buffer for the start photons
-    circular_buf_t cbuf;
-    cbuf.size = (int)args->buffer_size;
-    circular_buf_reset(&cbuf);
-    cbuf.buffer = calloc(cbuf.size, sizeof(uint64_t)); // set memory to zero so we have a proper
+    circular_buf_t cbuf = circular_buf_allocate((int)args->buffer_size);
 
     // loop over the postselection ranges assigned to thread
     for (int range_idx = 0; range_idx < args->n_ranges; range_idx++) {
@@ -379,17 +373,11 @@ static inline void *g2_ring_section(void *arguments) {
                           &oflcorrection, &timetag, &channel)) {
             if (channel == channel_start) {
                 circular_buf_put(&cbuf, timetag);
-                circular_buf_oldest(&cbuf, &oldest_timetag);
-                new_correlation_window = timetag - oldest_timetag;
-                
-                if (new_correlation_window < min_correlation_window) {
-                    min_correlation_window = new_correlation_window;
-                }
             }
             
-            if (channel == channel_stop && cbuf.count>0) {
+            if (channel == channel_stop) {
                 for(i = cbuf.head-1; i > (cbuf.head-1-cbuf.count); i--) {
-                    delta = timetag - cbuf.buffer[(i+cbuf.count) % cbuf.count];
+                    delta = timetag - cbuf.buffer[i];
                     if (delta < correlation_window) {
                         idx = (uint64_t)(delta * nb_of_bins / correlation_window);
                         args->ptr_hist[idx]++;

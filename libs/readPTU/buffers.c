@@ -33,11 +33,19 @@ void circular_buf_reset(circular_buf_t * cbuf);
 static inline void circular_buf_put(circular_buf_t * cbuf, uint64_t data);
 static inline void circular_buf_oldest(circular_buf_t * cbuf, uint64_t * data);
 
+circular_buf_t circular_buf_allocate(int size) {
+    circular_buf_t cbuf;
+    cbuf.size = size;
+    circular_buf_reset(&cbuf);
+    cbuf.buffer = calloc(2*cbuf.size, sizeof(uint64_t)); // set memory to zero so we have a proper
+
+    return cbuf;
+}
 
 void circular_buf_reset(circular_buf_t * cbuf)
 {
     if(cbuf) {
-        cbuf->head = 0;
+        cbuf->head = cbuf->size;
         cbuf->count = 0;
     }
 }
@@ -46,7 +54,8 @@ static inline void circular_buf_put(circular_buf_t * cbuf, uint64_t data)
 {
     if(cbuf) {
         cbuf->buffer[cbuf->head] = data;
-        cbuf->head = (cbuf->head + 1) % cbuf->size;
+        cbuf->buffer[cbuf->head - cbuf->size] = data;
+        cbuf->head = ((cbuf->head + 1) % cbuf->size) + cbuf->size;
         if(cbuf->count < cbuf->size) {
             cbuf->count = cbuf->count + 1;
         }

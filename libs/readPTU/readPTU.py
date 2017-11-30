@@ -374,7 +374,7 @@ class PTUmeasurement():
 
     def calculate_g2(self, correlation_window, resolution,
                      post_selec_ranges=None, channel_start=0, channel_stop=1,
-                     mode='ring', buffer_size=2**5, n_threads=1):
+                     mode='ring', buffer_size=2**7, n_threads=1):
         """
         Return the g2 calculated from the file, given the start and stop
         channels and the record number range to analyse.
@@ -414,7 +414,6 @@ class PTUmeasurement():
         # Resolution in globres units, typically picoseconds
         resolution = int(float(resolution) / self.meas.globres)
         correlation_window = int(float(correlation_window) / self.meas.globres)
-
         nb_of_bins = int(pl.floor(float(correlation_window) / resolution))
         histogram = pl.zeros(nb_of_bins)
 
@@ -483,11 +482,11 @@ if __name__ == '__main__':
         stop_time = time.time()
         print('timetrace calculation took', stop_time - start_time, 's')
 
-        pl.figure()
-        pl.plot(timetrace_x * 1e-12, timetrace_y)
-        pl.xlabel('Time (s)')
-        pl.ylabel('Counts/{} s'.format(timetrace_resolution))
-        pl.title('Timetrace')
+        # pl.figure()
+        # pl.plot(timetrace_x * 1e-12, timetrace_y)
+        # pl.xlabel('Time (s)')
+        # pl.ylabel('Counts/{} s'.format(timetrace_resolution))
+        # pl.title('Timetrace')
 
         # pl.figure()
         # pl.plot(timetrace_x * 1e-12, timetrace_recnum)
@@ -499,16 +498,34 @@ if __name__ == '__main__':
                   [300001, 400000], [400001, 500000]]
 
         start_time = time.time()
-        hist_x, hist_y = ptu_meas.calculate_g2(g2_window, g2_resolution,
+        print('\nRING ALGORITHM')
+        hist_x_ring, hist_y_ring = ptu_meas.calculate_g2(g2_window, g2_resolution,
                                                post_selec_ranges=None,
                                                n_threads=4,
                                                mode='ring')
         stop_time = time.time()
         print('g2 calculation took', stop_time - start_time, 's')
+        pl.figure()
+        pl.plot(hist_x_ring * 1e9, hist_y_ring)
+        pl.xlabel('Delay (ns)')
+        pl.title('G2 measurements (Ring algorithm)')
+
+        stop_time = time.time()
+        print('\nclassic ALGORITHM')
+        hist_x_classic, hist_y_classic = ptu_meas.calculate_g2(g2_window, g2_resolution,
+                                               post_selec_ranges=None,
+                                               n_threads=1,
+                                               mode='classic')
+        stop_time = time.time()
+        print('g2 calculation took', stop_time - start_time, 's')
+        pl.figure()
+        pl.plot(hist_x_classic * 1e9, hist_y_classic)
+        pl.xlabel('Delay (ns)')
+        pl.title('G2 measurements (Classic algorithm)')
 
         pl.figure()
-        pl.plot(hist_x * 1e9, hist_y)
+        pl.plot(hist_x_classic * 1e9, hist_y_classic-hist_y_ring)
         pl.xlabel('Delay (ns)')
-        pl.title('G2 measurements')
+        pl.title('Difference')
 
         pl.show()
