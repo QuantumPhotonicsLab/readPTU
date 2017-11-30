@@ -360,7 +360,7 @@ static inline void *g2_ring_section(void *arguments) {
 
     // Prepare the circular buffer for the start photons
     circular_buf_t cbuf;
-    cbuf.size = args->buffer_size;
+    cbuf.size = (int)args->buffer_size;
     circular_buf_reset(&cbuf);
     cbuf.buffer = calloc(cbuf.size, sizeof(uint64_t)); // set memory to zero so we have a proper
 
@@ -387,13 +387,13 @@ static inline void *g2_ring_section(void *arguments) {
                 }
             }
             
-            if (channel == channel_stop) {
-                for(i = 0; i < cbuf.count; i++) {
-                    delta = timetag - cbuf.buffer[i];
+            if (channel == channel_stop && cbuf.count>0) {
+                for(i = cbuf.head-1; i > (cbuf.head-1-cbuf.count); i--) {
+                    delta = timetag - cbuf.buffer[(i+cbuf.count) % cbuf.count];
                     if (delta < correlation_window) {
                         idx = (uint64_t)(delta * nb_of_bins / correlation_window);
                         args->ptr_hist[idx]++;
-                    }
+                    } else {break;}
                 }
             }
         } // end g2 algo

@@ -23,9 +23,9 @@ void record_buf_reset(record_buf_t *buffer) {
 // ====================================================================
 typedef struct {
     uint64_t *buffer;
-    size_t head;
-    size_t count;
-    size_t size; //of the buffer
+    int head;
+    int count;
+    int size; //of the buffer
 } circular_buf_t;
 
 
@@ -67,6 +67,7 @@ static inline void circular_buf_oldest(circular_buf_t * cbuf, uint64_t * data) {
         }
     }
 }
+
 // ============================
 // END OF CIRCULAR BUFFER
 // ============================
