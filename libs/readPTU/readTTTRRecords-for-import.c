@@ -57,7 +57,7 @@ static inline bool next_photon(FILE* filehandle, uint64_t * RecNum,
         // a function via a function pointer inside a hot loop.
         Parse##parser##(buffer->records[buffer->head], channel, timetag, oflcorrection);
         buffer->head++;
-        *RecNum += 1;
+        (*RecNum)++;
         
         if (*RecNum == StopRecord) { // run out of records
             *RecNum = StopRecord-1;

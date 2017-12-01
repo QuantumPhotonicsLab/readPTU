@@ -26,7 +26,12 @@ import mmap
 import struct
 import time
 import collections as coll
-# from analysis.libs.readPTU._readTTTRRecords import ffi, lib
+
+# from analysis.libs.readPTU._readTTTRRecords_HHT2_HH2 import ffi, lib
+# from analysis.libs.readPTU._readTTTRRecords_HHT2_HH2 import lib as  HHT2_HH2_lib
+# from analysis.libs.readPTU._readTTTRRecords_HHT2_HH1 import lib as  HHT2_HH1_lib
+# from analysis.libs.readPTU._readTTTRRecords_PHT2 import lib as  PHT2_lib
+
 from _readTTTRRecords_HHT2_HH2 import ffi, lib
 from _readTTTRRecords_HHT2_HH2 import lib as HHT2_HH2_lib
 from _readTTTRRecords_HHT2_HH1 import lib as HHT2_HH1_lib
@@ -510,7 +515,7 @@ if __name__ == '__main__':
         pl.xlabel('Delay (ns)')
         pl.title('G2 measurements (Ring algorithm)')
 
-        stop_time = time.time()
+        start_time = time.time()
         print('\nclassic ALGORITHM')
         hist_x_classic, hist_y_classic = ptu_meas.calculate_g2(g2_window, g2_resolution,
                                                post_selec_ranges=None,

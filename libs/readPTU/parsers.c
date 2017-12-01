@@ -133,8 +133,8 @@ static inline void ParseHHT2_HH1(uint32_t record, int * channel,
     }
 }
 
-static inline void ParseHHT2_HH2(uint32_t record, int *restrict channel,
-                                 uint64_t *restrict timetag, uint64_t *restrict oflcorrection)
+static inline void ParseHHT2_HH2(uint32_t record, int *channel,
+                                 uint64_t *timetag, uint64_t *oflcorrection)
 {
     /*
      ProcessHHT2() reads the next records of a file until it finds a photon, and then returns.
