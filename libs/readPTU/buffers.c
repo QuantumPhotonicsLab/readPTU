@@ -52,13 +52,11 @@ void circular_buf_reset(circular_buf_t * cbuf)
 
 static inline void circular_buf_put(circular_buf_t * cbuf, uint64_t data)
 {
-    if(cbuf) {
         cbuf->buffer[cbuf->head] = data;
         cbuf->buffer[cbuf->head - cbuf->size] = data;
         cbuf->head = ((cbuf->head + 1) % cbuf->size) + cbuf->size;
         if(cbuf->count < cbuf->size) {
             cbuf->count = cbuf->count + 1;
-        }
     }
 }
 

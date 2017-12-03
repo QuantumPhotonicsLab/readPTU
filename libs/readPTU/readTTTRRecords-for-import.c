@@ -128,7 +128,7 @@ static inline void *timetrace_section(void *arguments) {
 
     fread(TTTRRecord.records, RECORD_CHUNK, sizeof(uint32_t), filehandle);
     int photon_counter=0;
-    for (int i = 0; i < args->n_bins && photon_arrived; i++)
+    for (int i = 0; i < args->n_bins; i++)
     {
         end_of_bin = (i+1) * args->time_bin_length;
         photon_counter = 0;
@@ -141,7 +141,7 @@ static inline void *timetrace_section(void *arguments) {
         if (photon_arrived) { // the last incomplete bin is discarded
             args->ptr_recnum[i] = RecNum;
             args->ptr_trace[i] = photon_counter;
-        }
+        } else break; // no photons left
     }
 
     fclose(filehandle);
@@ -381,7 +381,7 @@ static inline void *g2_ring_section(void *arguments) {
                     if (delta < correlation_window) {
                         idx = (uint64_t)(delta * nb_of_bins / correlation_window);
                         args->ptr_hist[idx]++;
-                    } else {break;}
+                    } else break;
                 }
             }
         } // end g2 algo
