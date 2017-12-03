@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -485,7 +487,9 @@ if __name__ == '__main__':
         timetrace_x, timetrace_y, timetrace_recnum =\
             ptu_meas.timetrace(resolution=timetrace_resolution, n_threads=4)
         stop_time = time.time()
+        read_speed = os.path.getsize(filename)/float(stop_time - start_time)/1024./1024./1024.
         print('timetrace calculation took', stop_time - start_time, 's')
+        print('processing speed:', read_speed, 'GBps')
 
         # pl.figure()
         # pl.plot(timetrace_x * 1e-12, timetrace_y)
@@ -506,31 +510,34 @@ if __name__ == '__main__':
         print('\nRING ALGORITHM')
         hist_x_ring, hist_y_ring = ptu_meas.calculate_g2(g2_window, g2_resolution,
                                                post_selec_ranges=None,
+                                               buffer_size=2**4,
                                                n_threads=4,
                                                mode='ring')
         stop_time = time.time()
+        read_speed = os.path.getsize(filename)/float(stop_time - start_time)/1024./1024./1024.
         print('g2 calculation took', stop_time - start_time, 's')
+        print('processing speed:', read_speed, 'GBps')
         pl.figure()
         pl.plot(hist_x_ring * 1e9, hist_y_ring)
         pl.xlabel('Delay (ns)')
         pl.title('G2 measurements (Ring algorithm)')
 
-        start_time = time.time()
-        print('\nclassic ALGORITHM')
-        hist_x_classic, hist_y_classic = ptu_meas.calculate_g2(g2_window, g2_resolution,
-                                               post_selec_ranges=None,
-                                               n_threads=1,
-                                               mode='classic')
-        stop_time = time.time()
-        print('g2 calculation took', stop_time - start_time, 's')
-        pl.figure()
-        pl.plot(hist_x_classic * 1e9, hist_y_classic)
-        pl.xlabel('Delay (ns)')
-        pl.title('G2 measurements (Classic algorithm)')
+        # start_time = time.time()
+        # print('\nclassic ALGORITHM')
+        # hist_x_classic, hist_y_classic = ptu_meas.calculate_g2(g2_window, g2_resolution,
+        #                                        post_selec_ranges=None,
+        #                                        n_threads=1,
+        #                                        mode='classic')
+        # stop_time = time.time()
+        # print('g2 calculation took', stop_time - start_time, 's')
+        # pl.figure()
+        # pl.plot(hist_x_classic * 1e9, hist_y_classic)
+        # pl.xlabel('Delay (ns)')
+        # pl.title('G2 measurements (Classic algorithm)')
 
-        pl.figure()
-        pl.plot(hist_x_classic * 1e9, hist_y_classic-hist_y_ring)
-        pl.xlabel('Delay (ns)')
-        pl.title('Difference')
+        # pl.figure()
+        # pl.plot(hist_x_classic * 1e9, hist_y_classic-hist_y_ring)
+        # pl.xlabel('Delay (ns)')
+        # pl.title('Difference')
 
         pl.show()
