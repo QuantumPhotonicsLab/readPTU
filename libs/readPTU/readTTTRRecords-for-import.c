@@ -64,7 +64,7 @@ static inline bool next_photon(FILE* filehandle, uint64_t * RecNum,
             return false;
         }
 
-        if (channel >= 0) { // found a photon
+        if (*channel >= 0) { // found a photon
             return true;
         }
     }

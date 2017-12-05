@@ -450,6 +450,7 @@ class PTUmeasurement():
         correlation_window = nb_of_bins * resolution
 
         filepath = ffi.new("char[]", self.meas.filename)
+
         # Calculate
         g2_f(filepath,                     # file to analyze
              self.meas.end_header_offset,  # header offset
@@ -490,12 +491,13 @@ if __name__ == '__main__':
         read_speed = os.path.getsize(filename)/float(stop_time - start_time)/1024./1024./1024.
         print('timetrace calculation took', stop_time - start_time, 's')
         print('processing speed:', read_speed, 'GBps')
+        print('Total number of photons: ', pl.sum(timetrace_y))
 
-        # pl.figure()
-        # pl.plot(timetrace_x * 1e-12, timetrace_y)
-        # pl.xlabel('Time (s)')
-        # pl.ylabel('Counts/{} s'.format(timetrace_resolution))
-        # pl.title('Timetrace')
+        pl.figure()
+        pl.plot(timetrace_x * 1e-12, timetrace_y)
+        pl.xlabel('Time (s)')
+        pl.ylabel('Counts/{} s'.format(timetrace_resolution))
+        pl.title('Timetrace')
 
         # pl.figure()
         # pl.plot(timetrace_x * 1e-12, timetrace_recnum)
