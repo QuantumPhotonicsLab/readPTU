@@ -29,15 +29,15 @@ import struct
 import time
 import collections as coll
 
-from analysis.libs.readPTU._readTTTRRecords_HHT2_HH2 import ffi, lib
-from analysis.libs.readPTU._readTTTRRecords_HHT2_HH2 import lib as  HHT2_HH2_lib
-from analysis.libs.readPTU._readTTTRRecords_HHT2_HH1 import lib as  HHT2_HH1_lib
-from analysis.libs.readPTU._readTTTRRecords_PHT2 import lib as  PHT2_lib
+# from analysis.libs.readPTU._readTTTRRecords_HHT2_HH2 import ffi, lib
+# from analysis.libs.readPTU._readTTTRRecords_HHT2_HH2 import lib as  HHT2_HH2_lib
+# from analysis.libs.readPTU._readTTTRRecords_HHT2_HH1 import lib as  HHT2_HH1_lib
+# from analysis.libs.readPTU._readTTTRRecords_PHT2 import lib as  PHT2_lib
 
-# from _readTTTRRecords_HHT2_HH2 import ffi, lib
-# from _readTTTRRecords_HHT2_HH2 import lib as HHT2_HH2_lib
-# from _readTTTRRecords_HHT2_HH1 import lib as HHT2_HH1_lib
-# from _readTTTRRecords_PHT2 import lib as PHT2_lib
+from _readTTTRRecords_HHT2_HH2 import ffi, lib
+from _readTTTRRecords_HHT2_HH2 import lib as HHT2_HH2_lib
+from _readTTTRRecords_HHT2_HH1 import lib as HHT2_HH1_lib
+from _readTTTRRecords_PHT2 import lib as PHT2_lib
 
 
 class PTUfile():
@@ -461,12 +461,8 @@ class PTUmeasurement():
 
         correlation_window = nb_of_bins * resolution
 
-<<<<<<< HEAD
-        filepath = ffi.new("char[]", self.meas.filename)
-
-=======
         filepath = ffi.new("char[]", self.meas.filename.encode('ascii'))
->>>>>>> 9213462e9f866aeedefd0dc253d5c242d4752e72
+
         # Calculate
         g2_f(filepath,                     # file to analyze
              self.meas.end_header_offset,  # header offset
@@ -545,7 +541,7 @@ if __name__ == '__main__':
     g2_resolution = 600 * 1e-12  # picoseconds * 1e-12 to change to seconds
     g2_window = 500000 * 1e-12   # picoseconds * 1e-12 to change to seconds
 
-    filename = r'/Users/raphaelproux/Downloads/test_big.ptu'
+    filename = r'/Users/garfield/Downloads/test_big.ptu'
 
     with PTUfile(filename) as ptu_file:
         ptu_file.print_header()
