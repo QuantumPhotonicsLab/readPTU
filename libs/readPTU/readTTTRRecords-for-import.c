@@ -59,8 +59,7 @@ static inline bool next_photon(FILE* filehandle, uint64_t * RecNum,
         buffer->head++;
         (*RecNum)++;
         
-        if (*RecNum == StopRecord) { // run out of records
-            *RecNum = StopRecord-1;
+        if (*RecNum >= StopRecord) { // run out of records
             return false;
         }
 
