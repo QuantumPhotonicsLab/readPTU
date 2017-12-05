@@ -378,14 +378,14 @@ class PTUmeasurement():
         tt_f(filepath,
              self.meas.end_header_offset,
              record_range[0],
-             self.meas.num_records,
-             int(resolution),
+             record_range[1] - record_range[0],
+             resolution,
              c_time_trace,
              c_rec_num_trace,
              nb_of_bins,
              n_threads)
 
-        time_vector = pl.arange(nb_of_bins) * resolution
+        time_vector = pl.arange(nb_of_bins) * resolution * self.meas.globres
         time_trace = pl.array([element for element in c_time_trace])
         rec_num_trace = pl.array([element for element in c_rec_num_trace])
 
