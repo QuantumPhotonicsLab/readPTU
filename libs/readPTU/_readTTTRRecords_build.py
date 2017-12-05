@@ -28,7 +28,7 @@ with open('readTTTRRecords-for-import.c', 'r') as myfile:
     codes_dict = {k: c_code.replace("##parser##", k) for k in parsers}
 
 prototypes = r"""
-    void timetrace(char filepath[], int end_of_header, uint64_t *RecNum,
+    void timetrace(char filepath[], int end_of_header, uint64_t RecNum_start,
                    uint64_t NumRecords, uint64_t time_bin_length,
                    int time_trace[], uint64_t RecNum_trace[], int nb_of_bins,
                    int n_threads);
