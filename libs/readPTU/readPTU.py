@@ -29,15 +29,15 @@ import struct
 import time
 import collections as coll
 
-# from analysis.libs.readPTU._readTTTRRecords_HHT2_HH2 import ffi, lib
-# from analysis.libs.readPTU._readTTTRRecords_HHT2_HH2 import lib as  HHT2_HH2_lib
-# from analysis.libs.readPTU._readTTTRRecords_HHT2_HH1 import lib as  HHT2_HH1_lib
-# from analysis.libs.readPTU._readTTTRRecords_PHT2 import lib as  PHT2_lib
+from analysis.libs.readPTU._readTTTRRecords_HHT2_HH2 import ffi, lib
+from analysis.libs.readPTU._readTTTRRecords_HHT2_HH2 import lib as  HHT2_HH2_lib
+from analysis.libs.readPTU._readTTTRRecords_HHT2_HH1 import lib as  HHT2_HH1_lib
+from analysis.libs.readPTU._readTTTRRecords_PHT2 import lib as  PHT2_lib
 
-from _readTTTRRecords_HHT2_HH2 import ffi, lib
-from _readTTTRRecords_HHT2_HH2 import lib as HHT2_HH2_lib
-from _readTTTRRecords_HHT2_HH1 import lib as HHT2_HH1_lib
-from _readTTTRRecords_PHT2 import lib as PHT2_lib
+# from _readTTTRRecords_HHT2_HH2 import ffi, lib
+# from _readTTTRRecords_HHT2_HH2 import lib as HHT2_HH2_lib
+# from _readTTTRRecords_HHT2_HH1 import lib as HHT2_HH1_lib
+# from _readTTTRRecords_PHT2 import lib as PHT2_lib
 
 
 class PTUfile():
@@ -347,33 +347,45 @@ class PTUmeasurement():
 
         return rec_lib
 
-    def timetrace(self, resolution=1, n_threads=2):
-        """ Go through file with trivial operation to see how fast we can
-        read all the records.
+    def timetrace(self, resolution=1, record_range=[0, None], time_range=None, n_threads=2):
+        """ 
+        resolution is the time bin of the timetrace in seconds,
+        record_range[0] is the record number of the position where to start the timetrace, default is 0
+        record_range[1] is the record number of the position where to stop the timetrace, default is None (until the end of the measurement)
+        time_range is the time length between stop_record and start_record, default is None (will take the full measurement time)
         """
         tt_f = self._select_record_library().timetrace
 
         # resolution in "timetag unit" i.e. number of globres
         # globres is in seconds
         resolution = int(float(resolution) / self.meas.globres)
-        self.meas.reset_rec_num()
 
-        nb_of_bins = int(self.meas.acq_time / resolution)
+        if record_range[1] is None:
+            record_range[1] = self.meas.num_records
+
+        assert(0 <= record_range[0] < record_range[1] <= self.meas.num_records)
+
+        if time_range is None:
+            time_range = self.meas.acq_time * self.meas.globres
+
+        self.meas.reset_rec_num(at=record_range[0])
+
+        nb_of_bins = int(float(time_range) / self.meas.globres / resolution)
         c_time_trace = ffi.new("int[{}]".format(nb_of_bins))
         c_rec_num_trace = ffi.new("uint64_t[{}]".format(nb_of_bins))
 
-        filepath = ffi.new("char[]", self.meas.filename)
+        filepath = ffi.new("char[]", self.meas.filename.encode('ascii'))
         tt_f(filepath,
              self.meas.end_header_offset,
-             self.meas.c_rec_num,
-             self.meas.num_records,
-             int(resolution),
+             record_range[0],
+             record_range[1] - record_range[0],
+             resolution,
              c_time_trace,
              c_rec_num_trace,
              nb_of_bins,
              n_threads)
 
-        time_vector = pl.arange(nb_of_bins) * resolution
+        time_vector = pl.arange(nb_of_bins) * resolution * self.meas.globres
         time_trace = pl.array([element for element in c_time_trace])
         rec_num_trace = pl.array([element for element in c_rec_num_trace])
 
@@ -449,8 +461,12 @@ class PTUmeasurement():
 
         correlation_window = nb_of_bins * resolution
 
+<<<<<<< HEAD
         filepath = ffi.new("char[]", self.meas.filename)
 
+=======
+        filepath = ffi.new("char[]", self.meas.filename.encode('ascii'))
+>>>>>>> 9213462e9f866aeedefd0dc253d5c242d4752e72
         # Calculate
         g2_f(filepath,                     # file to analyze
              self.meas.end_header_offset,  # header offset
@@ -472,13 +488,64 @@ class PTUmeasurement():
         time_vector = pl.arange(nb_of_bins) * self.meas.globres
         return (time_vector, pl.array(histogram))
 
+
+def construct_postselect_vector(timetrace_y, timetrace_recnum, threshold, above=True):
+    """Constructs a postselection vector based on a threshold condition, selecting items above or below as specified by user.
+    
+    Args:
+        timetrace_y (numpy array): number of photons in the time bin.
+        timetrace_recnum (numpy array): array of record numbers corresponding to timebin start (for each time bin of the time trace)
+        threshold (number): number of photons threshold used for selection.
+        above (bool, optional): if True, will return time ranges where timetrace_y > threshold. If False, will return time ranges where timetrace_y < threshold.
+    
+    Returns:
+        (list, list): first: List of 2-item lists being [start_index, stop_index] array indices in timetrace_y for each post-selected range of points.
+                      second: corresponding record numbers allowing for direct use as post-selection array in the calculate_g2() function.
+    """
+
+    if above:
+        select = timetrace_y > threshold
+        if timetrace_y[0] > threshold:
+            add_first_time = True
+        else:
+            add_first_time = False
+    else:
+        select = timetrace_y < threshold
+        if timetrace_y[0] < threshold:
+            add_first_time = True
+        else:
+            add_first_time = False
+
+    nselect = ~select
+    post_selec_ranges = ((select[:-1] & nselect[1:]) | (nselect[:-1] & select[1:])).nonzero()[0]
+    if add_first_time:
+        post_selec_ranges = pl.insert(post_selec_ranges, 0, 0).astype(int)
+    if len(post_selec_ranges) % 2 != 0:  # odd length means we need to add the end time
+        post_selec_ranges = pl.append(post_selec_ranges, len(timetrace_y) - 2).astype(int)  # - 2 because 1 will be added below
+
+    # # take into account the end of the interval (otherwise stops 1 time bin before)
+    # for i, value in enumerate(post_selec_ranges[1::2]):
+    #     post_selec_ranges[2*i - 1] += 1
+
+    # # the previous step will introduce [0,11], [11,15] kind of situation (where ranges are contiguous). We remove these intermediate duplicates.
+    # double_index = (post_selec_ranges[:-1] != post_selec_ranges[1:])
+    # double_index = (pl.append(double_index, True) & pl.insert(double_index, 0, True))
+    # post_selec_ranges = post_selec_ranges[double_index]
+
+    post_selec_ranges = post_selec_ranges.reshape((-1, 2))
+
+    recnum_post_selec_ranges = [[timetrace_recnum[post_selec_range[0]], timetrace_recnum[post_selec_range[1]]] for post_selec_range in post_selec_ranges]
+
+    return post_selec_ranges, recnum_post_selec_ranges
+
+
 if __name__ == '__main__':
 
     timetrace_resolution = 10    # in seconds
     g2_resolution = 600 * 1e-12  # picoseconds * 1e-12 to change to seconds
     g2_window = 500000 * 1e-12   # picoseconds * 1e-12 to change to seconds
 
-    filename = r'/Users/garfield/Downloads/test_big.ptu'
+    filename = r'/Users/raphaelproux/Downloads/test_big.ptu'
 
     with PTUfile(filename) as ptu_file:
         ptu_file.print_header()
@@ -510,11 +577,11 @@ if __name__ == '__main__':
 
         start_time = time.time()
         print('\nRING ALGORITHM')
-        hist_x_ring, hist_y_ring = ptu_meas.calculate_g2(g2_window, g2_resolution,
-                                               post_selec_ranges=None,
-                                               buffer_size=2**4,
-                                               n_threads=4,
-                                               mode='ring')
+        hist_x_ring, hist_y_ring = ptu_meas.calculate_g2(g2_window, g2_resolution, 
+                                                         post_selec_ranges=None, 
+                                                         buffer_size=2**4, 
+                                                         n_threads=4, 
+                                                         mode='ring')
         stop_time = time.time()
         read_speed = os.path.getsize(filename)/float(stop_time - start_time)/1024./1024./1024.
         print('g2 calculation took', stop_time - start_time, 's')

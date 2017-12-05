@@ -148,7 +148,7 @@ static inline void *timetrace_section(void *arguments) {
     return NULL;
 }
 
-void timetrace(char filepath[], int end_of_header, uint64_t *RecNum,
+void timetrace(char filepath[], int end_of_header, uint64_t RecNum_start,
                uint64_t NumRecords, uint64_t time_bin_length, int time_trace[],
                uint64_t RecNum_trace[], int nb_of_bins, int n_threads) 
 {
@@ -178,8 +178,8 @@ void timetrace(char filepath[], int end_of_header, uint64_t *RecNum,
 
         thread_args[i].buffer = (uint32_t*) malloc(RECORD_CHUNK * sizeof(uint32_t));
         thread_args[i].end_of_header = end_of_header;
-        thread_args[i].RecNum_start = (uint64_t)i * records_per_thread;
-        thread_args[i].RecNum_stop = ((uint64_t)i+1) * records_per_thread;
+        thread_args[i].RecNum_start = (uint64_t)i * records_per_thread + RecNum_start;
+        thread_args[i].RecNum_stop = ((uint64_t)i+1) * records_per_thread + RecNum_start;
         thread_args[i].n_bins = nb_of_bins;
         thread_args[i].time_bin_length = time_bin_length;
         thread_args[i].filepath = filepath;
@@ -198,7 +198,8 @@ void timetrace(char filepath[], int end_of_header, uint64_t *RecNum,
     // Do also the recnums.
     // * = * = * = * = * = * = * = * = * = * = * = * = * = * =
     k = 0; // index for the time traces within a thread
-    uint64_t new_val_tt, new_val_rec; // stores the possible value for the trace
+    int new_val_tt;
+    uint64_t new_val_rec; // stores the possible value for the trace
     j = 0;  // use j to go over the threads
     for (i = 0; i < nb_of_bins; ++i)
     {
