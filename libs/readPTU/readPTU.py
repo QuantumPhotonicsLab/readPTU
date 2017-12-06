@@ -29,15 +29,15 @@ import struct
 import time
 import collections as coll
 
-# from analysis.libs.readPTU._readTTTRRecords_HHT2_HH2 import ffi, lib
-# from analysis.libs.readPTU._readTTTRRecords_HHT2_HH2 import lib as  HHT2_HH2_lib
-# from analysis.libs.readPTU._readTTTRRecords_HHT2_HH1 import lib as  HHT2_HH1_lib
-# from analysis.libs.readPTU._readTTTRRecords_PHT2 import lib as  PHT2_lib
+from analysis.libs.readPTU._readTTTRRecords_HHT2_HH2 import ffi, lib
+from analysis.libs.readPTU._readTTTRRecords_HHT2_HH2 import lib as  HHT2_HH2_lib
+from analysis.libs.readPTU._readTTTRRecords_HHT2_HH1 import lib as  HHT2_HH1_lib
+from analysis.libs.readPTU._readTTTRRecords_PHT2 import lib as  PHT2_lib
 
-from _readTTTRRecords_HHT2_HH2 import ffi, lib
-from _readTTTRRecords_HHT2_HH2 import lib as HHT2_HH2_lib
-from _readTTTRRecords_HHT2_HH1 import lib as HHT2_HH1_lib
-from _readTTTRRecords_PHT2 import lib as PHT2_lib
+# from _readTTTRRecords_HHT2_HH2 import ffi, lib
+# from _readTTTRRecords_HHT2_HH2 import lib as HHT2_HH2_lib
+# from _readTTTRRecords_HHT2_HH1 import lib as HHT2_HH1_lib
+# from _readTTTRRecords_PHT2 import lib as PHT2_lib
 
 
 class PTUfile():
@@ -486,7 +486,7 @@ class PTUmeasurement():
         for i in range(nb_of_bins):
             histogram[i] = c_histogram[i]
 
-        time_vector = pl.arange(nb_of_bins) * self.meas.globres
+        time_vector = pl.arange(nb_of_bins) * resolution * self.meas.globres
         return (time_vector, pl.array(histogram))
 
 
