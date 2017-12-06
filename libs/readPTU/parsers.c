@@ -123,7 +123,7 @@ static inline void ParseHHT2_HH1(uint32_t record, int * channel,
         }
         else if(T2Rec.bits.channel==0) { // sync
             *timetag = *oflcorrection + T2Rec.bits.timetag;
-            *channel = T2Rec.bits.channel;
+            *channel = 0;
             return;
         }
     }
@@ -159,42 +159,30 @@ static inline void ParseHHT2_HH2(uint32_t record, int *channel,
         uint32_t   allbits;
         struct{ unsigned timetag  :25;
             unsigned channel  :6;
-            unsigned special  :1; // or sync, if channel==0
+            unsigned special  :1;
         } bits;
     } T2Rec;
 
     T2Rec.allbits = record;
     
-    if(T2Rec.bits.special==1) {
-        if(T2Rec.bits.channel==0x3F) {//an overflow record
-            //number of overflows is stored in timetag
-            if(T2Rec.bits.timetag==0) {//if it is zero it is an old style single overflow
-                *oflcorrection += T2WRAPAROUND_V2;  //should never happen with new Firmware!
-            }
-            else {
+    if(T2Rec.bits.special) {
+        if(T2Rec.bits.channel==0x3F) {  //an overflow record
+            if(T2Rec.bits.timetag!=0) {
                 *oflcorrection += T2WRAPAROUND_V2 * T2Rec.bits.timetag;
             }
-            
-            *timetag = 0;
+            else {  // if it is zero it is an old style single overflow
+                *oflcorrection += T2WRAPAROUND_V2;  //should never happen with new Firmware!
+            }
             *channel = -1;
-            return;
-        } else
-        
-        if(T2Rec.bits.channel==0) {//sync
-            *timetag = *oflcorrection + T2Rec.bits.timetag;
-            *channel = T2Rec.bits.channel;
-            return;
-        } else if(T2Rec.bits.channel<=15) {//markers
-            //Note that actual marker tagging accuracy is only some ns.
-            *timetag = *oflcorrection + T2Rec.bits.timetag;
+        } else if(T2Rec.bits.channel == 0) {  //sync
+            *channel = 0;
+        } else if(T2Rec.bits.channel<=15) {  //markers
             *channel = -2;
-            return;
-        } 
-    }
-    else {//regular input channel
-        *timetag = *oflcorrection + T2Rec.bits.timetag;
+        }
+    } else {//regular input channel
         *channel = T2Rec.bits.channel + 1;
     }
+    *timetag = *oflcorrection + T2Rec.bits.timetag;
 }
 
 #endif /* PARSERS_C_ */
