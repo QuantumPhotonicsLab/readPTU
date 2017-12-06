@@ -360,8 +360,13 @@ class PTUmeasurement():
         # globres is in seconds
         resolution = int(float(resolution) / self.meas.globres)
 
+        if record_range is None:
+            record_range = [0, None]
+
         if record_range[1] is None:
             record_range[1] = self.meas.num_records
+
+        record_range = [int(record_range[0]), int(record_range[1])]
 
         assert(0 <= record_range[0] < record_range[1] <= self.meas.num_records)
 
