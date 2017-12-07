@@ -491,7 +491,7 @@ class PTUmeasurement():
         for i in range(nb_of_bins):
             histogram[i] = c_histogram[i]
 
-        time_vector = pl.arange(nb_of_bins) * resolution * self.meas.globres
+        time_vector = pl.arange(nb_of_bins, dtype='float') * resolution * self.meas.globres
         return (time_vector, pl.array(histogram))
 
 
@@ -547,7 +547,7 @@ def construct_postselect_vector(timetrace_y, timetrace_recnum, threshold, above=
 
 if __name__ == '__main__':
 
-    timetrace_resolution = 0.001    # in seconds
+    timetrace_resolution = 10    # in seconds
     g2_resolution = 600 * 1e-12  # picoseconds * 1e-12 to change to seconds
     g2_window = 500000 * 1e-12   # picoseconds * 1e-12 to change to seconds
 
@@ -559,7 +559,7 @@ if __name__ == '__main__':
 
         start_time = time.time()
         timetrace_x, timetrace_y, timetrace_recnum =\
-            ptu_meas.timetrace(resolution=timetrace_resolution, n_threads=4, record_range=[0,389518], time_range=1)
+            ptu_meas.timetrace(resolution=timetrace_resolution, n_threads=4)
         stop_time = time.time()
         read_speed = os.path.getsize(filename)/float(stop_time - start_time)/1024./1024./1024.
         print('timetrace calculation took', stop_time - start_time, 's')

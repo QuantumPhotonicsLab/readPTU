@@ -8,12 +8,14 @@
     #define CREATE_THREAD(func_name) pthread_create(&tid_array[i], NULL, \
                                                     func_name, \
                                                     &thread_args[i])
+    #define RETURN_SECTION NULL
 #elif defined(_WIN32)
     #include <windows.h>
     #define THREAD_FUNC_DEF(func_name) DWORD WINAPI func_name(LPVOID arguments)
     #define CREATE_THREAD(func_name) hThreadArray[i] = CreateThread(NULL, 0, \
                                                   func_name, &thread_args[i], \
                                                   0, &dwThreadIdArray[i])
+    #define RETURN_SECTION 0
 #endif
 
 #include <limits.h>
@@ -140,7 +142,12 @@ static inline THREAD_FUNC_DEF(timetrace_section) {
     uint64_t RecNum = args->RecNum_start;
     uint64_t end_of_bin;
 
-    fread(TTTRRecord.records, RECORD_CHUNK, sizeof(uint32_t), filehandle);
+    if(fread(TTTRRecord.records, RECORD_CHUNK, sizeof(uint32_t), filehandle)==0) {
+        if (ferror(filehandle)){
+            perror("Error detected while reading file.");
+            exit(0);
+        }
+    }
     int photon_counter=0;
     for (int i = 0; i < args->n_bins; i++)
     {
@@ -159,7 +166,7 @@ static inline THREAD_FUNC_DEF(timetrace_section) {
     }
 
     fclose(filehandle);
-    return 0;
+    return RETURN_SECTION;
 }
 
 void timetrace(char filepath[], int end_of_header, uint64_t RecNum_start,
@@ -332,7 +339,12 @@ static inline THREAD_FUNC_DEF(g2_fast_section) {
 
         // start g2 algo
         // prefill record buffer
-        fread(TTTRRecord.records, RECORD_CHUNK, sizeof(uint32_t), filehandle);
+        if(fread(TTTRRecord.records, RECORD_CHUNK, sizeof(uint32_t), filehandle)==0) {
+            if (ferror(filehandle)){
+                perror("Error detected while reading file.");
+                exit(0);
+            }
+        }
         TTTRRecord.head = 0;
         channel = -1;
 
@@ -360,7 +372,7 @@ static inline THREAD_FUNC_DEF(g2_fast_section) {
         } // end g2 algo
     }
     fclose(filehandle);
-    return 0;
+    return RETURN_SECTION;
 }
 
 static inline THREAD_FUNC_DEF(g2_ring_section) {
@@ -403,7 +415,12 @@ static inline THREAD_FUNC_DEF(g2_ring_section) {
 
         // start g2 algo
         // prefill circular buffer
-        fread(TTTRRecord.records, RECORD_CHUNK, sizeof(uint32_t), filehandle);
+        if(fread(TTTRRecord.records, RECORD_CHUNK, sizeof(uint32_t), filehandle)==0) {
+            if (ferror(filehandle)){
+                perror("Error detected while reading file.");
+                exit(0);
+            }
+        }
         TTTRRecord.head = 0;
         while(next_photon(filehandle, &RecNum, RecNum_STOP, &TTTRRecord,
                           &oflcorrection, &timetag, &channel)) {
@@ -426,7 +443,7 @@ static inline THREAD_FUNC_DEF(g2_ring_section) {
     }
     free(cbuf.buffer);
     fclose(filehandle);
-    return 0;
+    return RETURN_SECTION;
 }
 
 static inline THREAD_FUNC_DEF(g2_classic_section) {
@@ -487,6 +504,13 @@ static inline THREAD_FUNC_DEF(g2_classic_section) {
          */
         
         // while there are still unread photons in the file or unused start photons in the buffer
+        // prefill the TTTRRecord struct
+        if(fread(TTTRRecord.records, RECORD_CHUNK, sizeof(uint32_t), filehandle)==0) {
+            if (ferror(filehandle)){
+                perror("Error detected while reading file.");
+                exit(0);
+            }
+        }
         while(photon_arrived || start_buff_length > 0){            
             // FIND NEXT START PHOTON
             // first, take first start photon in buffer
@@ -570,7 +594,7 @@ static inline THREAD_FUNC_DEF(g2_classic_section) {
     }
 
     fclose(filehandle);
-    return 0;
+    return RETURN_SECTION;
 }
 
 void calculate_g2(char filepath[], int end_of_header,
