@@ -107,30 +107,36 @@ static inline void ParseHHT2_HH1(uint32_t record, int * channel,
     
     T2Rec.allbits = record;
     
-    if(T2Rec.bits.special==1) {
-        if(T2Rec.bits.channel==0x3F) {//an overflow record
-            *timetag = 0;
-            *channel = -1;
-            *oflcorrection += T2WRAPAROUND_V1;
-            return;
-        }
+    if(T2Rec.bits.channel==0x3F) {  //an overflow record
+        *oflcorrection += T2WRAPAROUND_V1;
+    }
+    *channel = (!T2Rec.bits.special) * (T2Rec.bits.channel + 1) - T2Rec.bits.special * T2Rec.bits.channel;
+    *timetag = *oflcorrection + T2Rec.bits.timetag;
+
+    // if(T2Rec.bits.special==1) {
+    //     if(T2Rec.bits.channel==0x3F) {//an overflow record
+    //         *timetag = 0;
+    //         *channel = -1;
+    //         *oflcorrection += T2WRAPAROUND_V1;
+    //         return;
+    //     }
         
-        if((T2Rec.bits.channel>=1)&&(T2Rec.bits.channel<=15)) { //markers
-            //Note that actual marker tagging accuracy is only some ns.
-            *timetag = *oflcorrection + T2Rec.bits.timetag;
-            *channel = -2;
-            return;
-        }
-        else if(T2Rec.bits.channel==0) { // sync
-            *timetag = *oflcorrection + T2Rec.bits.timetag;
-            *channel = 0;
-            return;
-        }
-    }
-    else { //regular input channel
-        *timetag = *oflcorrection + T2Rec.bits.timetag;
-        *channel = T2Rec.bits.channel + 1;
-    }
+    //     if((T2Rec.bits.channel>=1)&&(T2Rec.bits.channel<=15)) { //markers
+    //         //Note that actual marker tagging accuracy is only some ns.
+    //         *timetag = *oflcorrection + T2Rec.bits.timetag;
+    //         *channel = -2;
+    //         return;
+    //     }
+    //     else if(T2Rec.bits.channel==0) { // sync
+    //         *timetag = *oflcorrection + T2Rec.bits.timetag;
+    //         *channel = 0;
+    //         return;
+    //     }
+    // }
+    // else { //regular input channel
+    //     *timetag = *oflcorrection + T2Rec.bits.timetag;
+    //     *channel = T2Rec.bits.channel + 1;
+    // }
 }
 
 static inline void ParseHHT2_HH2(uint32_t record, int *channel,
