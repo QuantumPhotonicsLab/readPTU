@@ -358,10 +358,7 @@ class PTUmeasurement():
 
         # resolution in "timetag unit" i.e. number of globres
         # globres is in seconds
-        print('resolution user:', float(resolution))
-        print('globres', self.meas.globres)
         resolution = int(float(resolution) / self.meas.globres)
-        print('resolution calc:',resolution)
 
         if record_range is None:
             record_range = [0, None]
@@ -403,7 +400,7 @@ class PTUmeasurement():
 
     def calculate_g2(self, correlation_window, resolution,
                      post_selec_ranges=None, channel_start=0, channel_stop=1,
-                     mode='ring', buffer_size=2**7, n_threads=1):
+                     mode='ring', buffer_size=2**7, n_threads=2):
         """
         Return the g2 calculated from the file, given the start and stop
         channels and the record number range to analyse.
@@ -567,13 +564,13 @@ if __name__ == '__main__':
         print('Total number of photons: ', pl.sum(timetrace_y))
 
         pl.figure()
-        pl.plot(timetrace_x * 1e-12, timetrace_y)
+        pl.plot(timetrace_x, timetrace_y)
         pl.xlabel('Time (s)')
         pl.ylabel('Counts/{} s'.format(timetrace_resolution))
         pl.title('Timetrace')
 
         pl.figure()
-        pl.plot(timetrace_x * 1e-12, timetrace_recnum)
+        pl.plot(timetrace_x, timetrace_recnum)
         pl.xlabel('Time (s)')
         pl.ylabel('Record number')
         pl.title('Record number vs measurement time')
