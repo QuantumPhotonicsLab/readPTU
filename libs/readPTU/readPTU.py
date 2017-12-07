@@ -358,7 +358,10 @@ class PTUmeasurement():
 
         # resolution in "timetag unit" i.e. number of globres
         # globres is in seconds
+        print('resolution user:', float(resolution))
+        print('globres', self.meas.globres)
         resolution = int(float(resolution) / self.meas.globres)
+        print('resolution calc:',resolution)
 
         if record_range is None:
             record_range = [0, None]
@@ -390,7 +393,9 @@ class PTUmeasurement():
              nb_of_bins,
              n_threads)
 
-        time_vector = pl.arange(nb_of_bins) * resolution * self.meas.globres
+
+
+        time_vector = pl.arange(nb_of_bins, dtype='float') * resolution * self.meas.globres
         time_trace = pl.array([element for element in c_time_trace])
         rec_num_trace = pl.array([element for element in c_rec_num_trace])
 

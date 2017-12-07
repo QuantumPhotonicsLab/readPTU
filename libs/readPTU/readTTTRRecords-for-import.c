@@ -1,7 +1,21 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <pthread.h>
+
+#if defined(__linux__ ) || defined(__APPLE__)
+    #include <pthread.h>
+    #define THREAD_FUNC_DEF(func_name) void *func_name(void *arguments)
+    #define CREATE_THREAD(func_name) pthread_create(&tid_array[i], NULL, \
+                                                    func_name, \
+                                                    &thread_args[i])
+#elif defined(_WIN32)
+    #include <windows.h>
+    #define THREAD_FUNC_DEF(func_name) DWORD WINAPI func_name(LPVOID arguments)
+    #define CREATE_THREAD(func_name) hThreadArray[i] = CreateThread(NULL, 0, \
+                                                  func_name, &thread_args[i], \
+                                                  0, &dwThreadIdArray[i])
+#endif
+
 #include <limits.h>
 #include <stdbool.h>
 
@@ -92,7 +106,7 @@ typedef struct _timetrace_args {
         char *filepath;
     } timetrace_args;
 
-static inline void *timetrace_section(void *arguments) {
+static inline THREAD_FUNC_DEF(timetrace_section) {
     /*Return an intensity time trace from a thread.
 
     Arguments:
@@ -145,7 +159,7 @@ static inline void *timetrace_section(void *arguments) {
     }
 
     fclose(filehandle);
-    return NULL;
+    return 0;
 }
 
 void timetrace(char filepath[], int end_of_header, uint64_t RecNum_start,
@@ -159,13 +173,20 @@ void timetrace(char filepath[], int end_of_header, uint64_t RecNum_start,
     uint64_t records_per_thread = (uint64_t)(NumRecords/n_threads);
 
     // Prepare the threads
+#if defined(__linux__ ) || defined(__APPLE__)
     pthread_t *tid_array;
     tid_array = (pthread_t*) malloc(n_threads * sizeof(pthread_t));
+#elif defined(_WIN32)
+    HANDLE *hThreadArray;
+    hThreadArray = (HANDLE*) malloc(n_threads * sizeof(HANDLE));
+    DWORD   *dwThreadIdArray;
+    dwThreadIdArray = (DWORD*) malloc(n_threads * sizeof(DWORD));
+#endif
 
     // Fill in the arguments for the different threads
     timetrace_args *thread_args;
     thread_args = (timetrace_args*) malloc(n_threads * sizeof(timetrace_args));
-
+    
     for (i = 0; i < n_threads; ++i) {
         thread_args[i].ptr_trace = (int*) malloc(nb_of_bins * sizeof(int));
         thread_args[i].ptr_recnum = (uint64_t*) malloc(nb_of_bins * sizeof(uint64_t));
@@ -186,12 +207,17 @@ void timetrace(char filepath[], int end_of_header, uint64_t RecNum_start,
     }
 
     for (i = 0; i < n_threads; ++i) { 
-        pthread_create(&tid_array[i], NULL, timetrace_section, &thread_args[i]);
+        CREATE_THREAD(timetrace_section);
     }
 
-    for (i = 0; i < n_threads; ++i) {
+#if defined(__linux__ ) || defined(__APPLE__)
+    for (int i = 0; i < n_threads; ++i) {
         pthread_join(tid_array[i], NULL);
     }
+#elif defined(_WIN32)
+    WaitForMultipleObjects(n_threads, hThreadArray, TRUE, INFINITE);
+#endif
+
 
     // * = * = * = * = * = * = * = * = * = * = * = * = * = * =
     // Splice the timetraces of each thread into a single one.
@@ -230,8 +256,17 @@ void timetrace(char filepath[], int end_of_header, uint64_t RecNum_start,
         free(&(thread_args[i].buffer[0]));
     }
 
-    free(thread_args);
+#if defined(__linux__ ) || defined(__APPLE__)
     free(tid_array);
+#elif defined(_WIN32)
+    for (int i = 0; i < n_threads; ++i)
+    {
+        CloseHandle(hThreadArray[i]);
+    }
+    free(hThreadArray);
+    free(dwThreadIdArray);
+#endif
+    free(thread_args);
     return;
 }
 
@@ -257,7 +292,7 @@ typedef struct _g2_args {
         char *filepath;
     } g2_args;
 
-static inline void *g2_fast_section(void *arguments) {
+static inline THREAD_FUNC_DEF(g2_fast_section) {
     // Get a thread filehandle
     const g2_args *args = (g2_args*)arguments;
 
@@ -325,10 +360,10 @@ static inline void *g2_fast_section(void *arguments) {
         } // end g2 algo
     }
     fclose(filehandle);
-    return NULL;
+    return 0;
 }
 
-static inline void *g2_ring_section(void *arguments) {
+static inline THREAD_FUNC_DEF(g2_ring_section) {
     // Get a thread filehandle
     const g2_args *args = (g2_args*)arguments;
 
@@ -391,10 +426,10 @@ static inline void *g2_ring_section(void *arguments) {
     }
     free(cbuf.buffer);
     fclose(filehandle);
-    return NULL;
+    return 0;
 }
 
-static inline void *g2_classic_section(void *arguments) {
+static inline THREAD_FUNC_DEF(g2_classic_section) {
     // Get a thread filehandle
     const g2_args *args = (g2_args*)arguments;
 
@@ -535,7 +570,7 @@ static inline void *g2_classic_section(void *arguments) {
     }
 
     fclose(filehandle);
-    return NULL;
+    return 0;
 }
 
 void calculate_g2(char filepath[], int end_of_header,
@@ -557,8 +592,15 @@ void calculate_g2(char filepath[], int end_of_header,
     }
 
     // Prepare the threads
+#if defined(__linux__ ) || defined(__APPLE__)
     pthread_t *tid_array;
     tid_array = (pthread_t*) malloc(n_threads * sizeof(pthread_t));
+#elif defined(_WIN32)
+    HANDLE *hThreadArray;
+    hThreadArray = (HANDLE*) malloc(n_threads * sizeof(HANDLE));
+    DWORD   *dwThreadIdArray;
+    dwThreadIdArray = (DWORD*) malloc(n_threads * sizeof(DWORD));
+#endif
 
     // Fill in the arguments for the different threads
     g2_args *thread_args;
@@ -609,13 +651,13 @@ void calculate_g2(char filepath[], int end_of_header,
     for (int i = 0; i < n_threads; ++i) {
         switch (mode) {
             case FAST:
-                pthread_create(&tid_array[i], NULL, g2_fast_section, &thread_args[i]);
+                CREATE_THREAD(g2_fast_section);
                 break;
             case RING:
-                pthread_create(&tid_array[i], NULL, g2_ring_section, &thread_args[i]);
+                CREATE_THREAD(g2_ring_section);
                 break;
             case CLASSIC:
-                pthread_create(&tid_array[i], NULL, g2_classic_section, &thread_args[i]);
+                CREATE_THREAD(g2_classic_section);
                 break;
             default:
                 printf("%s\n", "NON-EXISTENT G2 MODE");
@@ -624,9 +666,13 @@ void calculate_g2(char filepath[], int end_of_header,
         
     }
 
+#if defined(__linux__ ) || defined(__APPLE__)
     for (int i = 0; i < n_threads; ++i) {
         pthread_join(tid_array[i], NULL);
     }
+#elif defined(_WIN32)
+    WaitForMultipleObjects(n_threads, hThreadArray, TRUE, INFINITE);
+#endif
 
     // Combine the histograms
     for (int i = 0; i < n_threads; ++i)
@@ -644,8 +690,18 @@ void calculate_g2(char filepath[], int end_of_header,
         free(&(thread_args[i].ptr_hist[0]));
         free(&(thread_args[i].buffer[0]));
     }
+
+#if defined(__linux__ ) || defined(__APPLE__)
+    free(tid_array);
+#elif defined(_WIN32)
+    for (int i = 0; i < n_threads; ++i)
+    {
+        CloseHandle(hThreadArray[i]);
+    }
+    free(hThreadArray);
+    free(dwThreadIdArray);
+#endif
     
     free(thread_args);
-    free(tid_array);
     return;
 }
