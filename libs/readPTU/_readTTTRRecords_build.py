@@ -46,9 +46,9 @@ if __name__ == "__main__":
         ffibuilder = FFI()
         ffibuilder.cdef(prototypes)
         ffibuilder.set_source("_readTTTRRecords_{}".format(code),
-                              codes_dict[code],
-                              extra_compile_args=["-O3"])
+                              codes_dict[code])
+                              # extra_compile_args=["-O3"])
         print('\nCompiling version {}'.format(code))
         ffibuilder.compile(verbose=True)
-        remove('_readTTTRRecords_{}.c'.format(code))
-        remove('_readTTTRRecords_{}.o'.format(code))
+        #remove('_readTTTRRecords_{}.c'.format(code))
+        # remove('_readTTTRRecords_{}.o'.format(code))
