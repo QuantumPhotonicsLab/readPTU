@@ -165,23 +165,33 @@ static inline void ParseHHT2_HH2(uint32_t record, int *channel,
 
     T2Rec.allbits = record;
     
-    if(T2Rec.bits.special) {
-        if(T2Rec.bits.channel==0x3F) {  //an overflow record
-            if(T2Rec.bits.timetag!=0) {
+    // if(T2Rec.bits.special) {
+    //     if(T2Rec.bits.channel==0x3F) {  //an overflow record
+            // if(T2Rec.bits.timetag!=0) {
+            //     *oflcorrection += T2WRAPAROUND_V2 * T2Rec.bits.timetag;
+            // }
+            // else {  // if it is zero it is an old style single overflow
+            //     *oflcorrection += T2WRAPAROUND_V2;  //should never happen with new Firmware!
+            //}
+    //         *channel = -1;
+    //     } else if(T2Rec.bits.channel == 0) {  //sync
+    //         *channel = 0;
+    //     } else if(T2Rec.bits.channel<=15) {  //markers
+    //         *channel = -2;
+    //     }
+    // } else {//regular input channel
+    //     *channel = T2Rec.bits.channel + 1;
+    // }
+    // *timetag = *oflcorrection + T2Rec.bits.timetag;
+    if(T2Rec.bits.channel==0x3F) {  //an overflow record
+        // if(T2Rec.bits.timetag!=0) {
                 *oflcorrection += T2WRAPAROUND_V2 * T2Rec.bits.timetag;
-            }
-            else {  // if it is zero it is an old style single overflow
-                *oflcorrection += T2WRAPAROUND_V2;  //should never happen with new Firmware!
-            }
-            *channel = -1;
-        } else if(T2Rec.bits.channel == 0) {  //sync
-            *channel = 0;
-        } else if(T2Rec.bits.channel<=15) {  //markers
-            *channel = -2;
-        }
-    } else {//regular input channel
-        *channel = T2Rec.bits.channel + 1;
+            // }
+            // else {  // if it is zero it is an old style single overflow
+                // *oflcorrection += T2WRAPAROUND_V2;  //should never happen with new Firmware!
+            // }
     }
+    *channel = (!T2Rec.bits.special) * (T2Rec.bits.channel + 1) - T2Rec.bits.special * T2Rec.bits.channel;
     *timetag = *oflcorrection + T2Rec.bits.timetag;
 }
 

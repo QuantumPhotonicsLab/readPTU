@@ -48,7 +48,7 @@ static inline bool next_photon(FILE* filehandle, uint64_t * RecNum,
      0 when reached end of file.
      */
     pop_record:
-    while (buffer->head < RECORD_CHUNK) { // still have records on buffer
+    if (buffer->head < RECORD_CHUNK && (*RecNum)<StopRecord) { // still have records on buffer
         // This .c file is preprocessed by _readTTTRecords_build.py by
         // replacing the ##parser## tag with different parsers. This
         // replacing makes the file into a valid C file. By doing this
@@ -59,17 +59,18 @@ static inline bool next_photon(FILE* filehandle, uint64_t * RecNum,
         buffer->head++;
         (*RecNum)++;
         
-        if (*RecNum >= StopRecord) { // run out of records
-            return false;
-        }
-
-        if (*channel >= 0) { // found a photon
-            return true;
-        }
+        return true;
+    } else if (*RecNum >= StopRecord) { // run out of records
+          return false;
     }
     // run out of buffer
     buffer->head = 0;
-    fread(buffer->records, RECORD_CHUNK, sizeof(uint32_t), filehandle);
+    if(fread(buffer->records, RECORD_CHUNK, sizeof(uint32_t), filehandle)==0) {
+        if (ferror(filehandle)){
+            perror("Error detected while reading file.");
+            exit(0);
+        }
+    }
     goto pop_record;
 }
 
@@ -131,10 +132,10 @@ static inline void *timetrace_section(void *arguments) {
     {
         end_of_bin = (i+1) * args->time_bin_length;
         photon_counter = 0;
-        while (timetag < end_of_bin) {
+        while (timetag < end_of_bin && photon_arrived) {
             photon_arrived = next_photon(filehandle, &RecNum, args->RecNum_stop,
                                          &TTTRRecord, &oflcorrection, &timetag, &channel);
-            photon_counter++;
+            photon_counter += (channel >= 0);
         }
 
         if (photon_arrived) { // the last incomplete bin is discarded
@@ -371,8 +372,10 @@ static inline void *g2_ring_section(void *arguments) {
         TTTRRecord.head = 0;
         while(next_photon(filehandle, &RecNum, RecNum_STOP, &TTTRRecord,
                           &oflcorrection, &timetag, &channel)) {
+
             if (channel == channel_start) {
                 circular_buf_put(&cbuf, timetag);
+                continue;
             }
             
             if (channel == channel_stop) {

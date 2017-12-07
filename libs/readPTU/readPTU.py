@@ -29,15 +29,15 @@ import struct
 import time
 import collections as coll
 
-from analysis.libs.readPTU._readTTTRRecords_HHT2_HH2 import ffi, lib
-from analysis.libs.readPTU._readTTTRRecords_HHT2_HH2 import lib as  HHT2_HH2_lib
-from analysis.libs.readPTU._readTTTRRecords_HHT2_HH1 import lib as  HHT2_HH1_lib
-from analysis.libs.readPTU._readTTTRRecords_PHT2 import lib as  PHT2_lib
+# from analysis.libs.readPTU._readTTTRRecords_HHT2_HH2 import ffi, lib
+# from analysis.libs.readPTU._readTTTRRecords_HHT2_HH2 import lib as  HHT2_HH2_lib
+# from analysis.libs.readPTU._readTTTRRecords_HHT2_HH1 import lib as  HHT2_HH1_lib
+# from analysis.libs.readPTU._readTTTRRecords_PHT2 import lib as  PHT2_lib
 
-# from _readTTTRRecords_HHT2_HH2 import ffi, lib
-# from _readTTTRRecords_HHT2_HH2 import lib as HHT2_HH2_lib
-# from _readTTTRRecords_HHT2_HH1 import lib as HHT2_HH1_lib
-# from _readTTTRRecords_PHT2 import lib as PHT2_lib
+from _readTTTRRecords_HHT2_HH2 import ffi, lib
+from _readTTTRRecords_HHT2_HH2 import lib as HHT2_HH2_lib
+from _readTTTRRecords_HHT2_HH1 import lib as HHT2_HH1_lib
+from _readTTTRRecords_PHT2 import lib as PHT2_lib
 
 
 class PTUfile():
@@ -542,7 +542,7 @@ def construct_postselect_vector(timetrace_y, timetrace_recnum, threshold, above=
 
 if __name__ == '__main__':
 
-    timetrace_resolution = 10    # in seconds
+    timetrace_resolution = 0.001    # in seconds
     g2_resolution = 600 * 1e-12  # picoseconds * 1e-12 to change to seconds
     g2_window = 500000 * 1e-12   # picoseconds * 1e-12 to change to seconds
 
@@ -554,7 +554,7 @@ if __name__ == '__main__':
 
         start_time = time.time()
         timetrace_x, timetrace_y, timetrace_recnum =\
-            ptu_meas.timetrace(resolution=timetrace_resolution, n_threads=4)
+            ptu_meas.timetrace(resolution=timetrace_resolution, n_threads=4, record_range=[0,389518], time_range=1)
         stop_time = time.time()
         read_speed = os.path.getsize(filename)/float(stop_time - start_time)/1024./1024./1024.
         print('timetrace calculation took', stop_time - start_time, 's')
@@ -567,11 +567,11 @@ if __name__ == '__main__':
         pl.ylabel('Counts/{} s'.format(timetrace_resolution))
         pl.title('Timetrace')
 
-        # pl.figure()
-        # pl.plot(timetrace_x * 1e-12, timetrace_recnum)
-        # pl.xlabel('Time (s)')
-        # pl.ylabel('Record number')
-        # pl.title('Record number vs measurement time')
+        pl.figure()
+        pl.plot(timetrace_x * 1e-12, timetrace_recnum)
+        pl.xlabel('Time (s)')
+        pl.ylabel('Record number')
+        pl.title('Record number vs measurement time')
 
         ranges = [[0, 100000], [100001, 200000], [200001, 300000],
                   [300001, 400000], [400001, 500000]]
