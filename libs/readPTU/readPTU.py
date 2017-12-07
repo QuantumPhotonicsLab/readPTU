@@ -363,8 +363,13 @@ class PTUmeasurement():
         resolution = int(float(resolution) / self.meas.globres)
         print('resolution calc:',resolution)
 
+        if record_range is None:
+            record_range = [0, None]
+
         if record_range[1] is None:
             record_range[1] = self.meas.num_records
+
+        record_range = [int(record_range[0]), int(record_range[1])]
 
         assert(0 <= record_range[0] < record_range[1] <= self.meas.num_records)
 
@@ -467,6 +472,7 @@ class PTUmeasurement():
         correlation_window = nb_of_bins * resolution
 
         filepath = ffi.new("char[]", self.meas.filename.encode('ascii'))
+
         # Calculate
         g2_f(filepath,                     # file to analyze
              self.meas.end_header_offset,  # header offset
@@ -485,7 +491,7 @@ class PTUmeasurement():
         for i in range(nb_of_bins):
             histogram[i] = c_histogram[i]
 
-        time_vector = pl.arange(nb_of_bins) * self.meas.globres
+        time_vector = pl.arange(nb_of_bins) * resolution * self.meas.globres
         return (time_vector, pl.array(histogram))
 
 
@@ -545,7 +551,7 @@ if __name__ == '__main__':
     g2_resolution = 600 * 1e-12  # picoseconds * 1e-12 to change to seconds
     g2_window = 500000 * 1e-12   # picoseconds * 1e-12 to change to seconds
 
-    filename = r'/Users/raphaelproux/Downloads/test_big.ptu'
+    filename = r'/Users/garfield/Downloads/test_big.ptu'
 
     with PTUfile(filename) as ptu_file:
         ptu_file.print_header()
@@ -558,12 +564,13 @@ if __name__ == '__main__':
         read_speed = os.path.getsize(filename)/float(stop_time - start_time)/1024./1024./1024.
         print('timetrace calculation took', stop_time - start_time, 's')
         print('processing speed:', read_speed, 'GBps')
+        print('Total number of photons: ', pl.sum(timetrace_y))
 
-        # pl.figure()
-        # pl.plot(timetrace_x * 1e-12, timetrace_y)
-        # pl.xlabel('Time (s)')
-        # pl.ylabel('Counts/{} s'.format(timetrace_resolution))
-        # pl.title('Timetrace')
+        pl.figure()
+        pl.plot(timetrace_x * 1e-12, timetrace_y)
+        pl.xlabel('Time (s)')
+        pl.ylabel('Counts/{} s'.format(timetrace_resolution))
+        pl.title('Timetrace')
 
         # pl.figure()
         # pl.plot(timetrace_x * 1e-12, timetrace_recnum)
