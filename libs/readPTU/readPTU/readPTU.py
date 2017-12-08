@@ -21,23 +21,18 @@ Please note:
 
 """
 
-import pylab as pl
+from matplotlib import pyplot as plt
+import numpy as np
 import os
-# import sys
 import mmap
 import struct
 import time
 import collections as coll
 
-from ._readTTTRRecords_HHT2_HH2 import ffi, lib
-from ._readTTTRRecords_HHT2_HH2 import lib as  HHT2_HH2_lib
-from ._readTTTRRecords_HHT2_HH1 import lib as  HHT2_HH1_lib
-from ._readTTTRRecords_PHT2 import lib as  PHT2_lib
-
-# from _readTTTRRecords_HHT2_HH2 import ffi, lib
-# from _readTTTRRecords_HHT2_HH2 import lib as HHT2_HH2_lib
-# from _readTTTRRecords_HHT2_HH1 import lib as HHT2_HH1_lib
-# from _readTTTRRecords_PHT2 import lib as PHT2_lib
+from _readTTTRRecords_HHT2_HH2 import ffi, lib
+from _readTTTRRecords_HHT2_HH2 import lib as HHT2_HH2_lib
+from _readTTTRRecords_HHT2_HH1 import lib as HHT2_HH1_lib
+from _readTTTRRecords_PHT2 import lib as PHT2_lib
 
 
 class PTUfile():
@@ -201,11 +196,11 @@ class PTUfile():
 
         # Some tag types need conversion
         if tag['type'] == 'tyFloat8':
-            tag['value'] = pl.int64(tag['value']).view('float64')
+            tag['value'] = np.int64(tag['value']).view('float64')
         elif tag['type'] == 'tyBool8':
             tag['value'] = bool(tag['value'])
         elif tag['type'] == 'tyTDateTime':
-            TDateTime = pl.uint64(tag['value']).view('float64')
+            TDateTime = np.uint64(tag['value']).view('float64')
             t = time.gmtime(self._ptu_TDateTime_to_time_t(TDateTime))
             tag['value'] = time.strftime("%Y-%m-%d %H:%M:%S", t)
 
@@ -214,7 +209,7 @@ class PTUfile():
             tag['data'] = s[offset: offset + tag['value']].rstrip(b'\0').decode()
             offset += tag['value']
         elif tag['type'] == 'tyFloat8Array':
-            tag['data'] = pl.frombuffer(s, dtype='float', count=tag['value']/8)
+            tag['data'] = np.frombuffer(s, dtype='float', count=tag['value']/8)
             offset += tag['value']
         elif tag['type'] == 'tyWideString':
             # WideString use type WCHAR in the original C++ demo code.
@@ -392,9 +387,9 @@ class PTUmeasurement():
 
 
 
-        time_vector = pl.arange(nb_of_bins, dtype='float') * resolution * self.meas.globres
-        time_trace = pl.array([element for element in c_time_trace])
-        rec_num_trace = pl.array([element for element in c_rec_num_trace])
+        time_vector = np.arange(nb_of_bins, dtype='float') * resolution * self.meas.globres
+        time_trace = np.array([element for element in c_time_trace])
+        rec_num_trace = np.array([element for element in c_rec_num_trace])
 
         return (time_vector, time_trace, rec_num_trace)
 
@@ -440,8 +435,8 @@ class PTUmeasurement():
         # Resolution in globres units, typically picoseconds
         resolution = int(float(resolution) / self.meas.globres)
         correlation_window = int(float(correlation_window) / self.meas.globres)
-        nb_of_bins = int(pl.floor(float(correlation_window) / resolution))
-        histogram = pl.zeros(nb_of_bins)
+        nb_of_bins = int(np.floor(float(correlation_window) / resolution))
+        histogram = np.zeros(nb_of_bins)
 
         # Prepare the post selection ranges
         if post_selec_ranges is None:
@@ -488,8 +483,8 @@ class PTUmeasurement():
         for i in range(nb_of_bins):
             histogram[i] = c_histogram[i]
 
-        time_vector = pl.arange(nb_of_bins, dtype='float') * resolution * self.meas.globres
-        return (time_vector, pl.array(histogram))
+        time_vector = np.arange(nb_of_bins, dtype='float') * resolution * self.meas.globres
+        return (time_vector, np.array(histogram))
 
 
 def construct_postselect_vector(timetrace_y, timetrace_recnum, threshold, above=True):
@@ -522,9 +517,9 @@ def construct_postselect_vector(timetrace_y, timetrace_recnum, threshold, above=
     nselect = ~select
     post_selec_ranges = ((select[:-1] & nselect[1:]) | (nselect[:-1] & select[1:])).nonzero()[0]
     if add_first_time:
-        post_selec_ranges = pl.insert(post_selec_ranges, 0, 0).astype(int)
+        post_selec_ranges = np.insert(post_selec_ranges, 0, 0).astype(int)
     if len(post_selec_ranges) % 2 != 0:  # odd length means we need to add the end time
-        post_selec_ranges = pl.append(post_selec_ranges, len(timetrace_y) - 2).astype(int)  # - 2 because 1 will be added below
+        post_selec_ranges = np.append(post_selec_ranges, len(timetrace_y) - 2).astype(int)  # - 2 because 1 will be added below
 
     # # take into account the end of the interval (otherwise stops 1 time bin before)
     # for i, value in enumerate(post_selec_ranges[1::2]):
@@ -532,7 +527,7 @@ def construct_postselect_vector(timetrace_y, timetrace_recnum, threshold, above=
 
     # # the previous step will introduce [0,11], [11,15] kind of situation (where ranges are contiguous). We remove these intermediate duplicates.
     # double_index = (post_selec_ranges[:-1] != post_selec_ranges[1:])
-    # double_index = (pl.append(double_index, True) & pl.insert(double_index, 0, True))
+    # double_index = (np.append(double_index, True) & np.insert(double_index, 0, True))
     # post_selec_ranges = post_selec_ranges[double_index]
 
     post_selec_ranges = post_selec_ranges.reshape((-1, 2))
@@ -561,19 +556,19 @@ if __name__ == '__main__':
         read_speed = os.path.getsize(filename)/float(stop_time - start_time)/1024./1024./1024.
         print('timetrace calculation took', stop_time - start_time, 's')
         print('processing speed:', read_speed, 'GBps')
-        print('Total number of photons: ', pl.sum(timetrace_y))
+        print('Total number of photons: ', np.sum(timetrace_y))
 
-        pl.figure()
-        pl.plot(timetrace_x, timetrace_y)
-        pl.xlabel('Time (s)')
-        pl.ylabel('Counts/{} s'.format(timetrace_resolution))
-        pl.title('Timetrace')
+        plt.figure()
+        plt.plot(timetrace_x, timetrace_y)
+        plt.xlabel('Time (s)')
+        plt.ylabel('Counts/{} s'.format(timetrace_resolution))
+        plt.title('Timetrace')
 
-        pl.figure()
-        pl.plot(timetrace_x, timetrace_recnum)
-        pl.xlabel('Time (s)')
-        pl.ylabel('Record number')
-        pl.title('Record number vs measurement time')
+        plt.figure()
+        plt.plot(timetrace_x, timetrace_recnum)
+        plt.xlabel('Time (s)')
+        plt.ylabel('Record number')
+        plt.title('Record number vs measurement time')
 
         ranges = [[0, 100000], [100001, 200000], [200001, 300000],
                   [300001, 400000], [400001, 500000]]
@@ -589,10 +584,10 @@ if __name__ == '__main__':
         read_speed = os.path.getsize(filename)/float(stop_time - start_time)/1024./1024./1024.
         print('g2 calculation took', stop_time - start_time, 's')
         print('processing speed:', read_speed, 'GBps')
-        pl.figure()
-        pl.plot(hist_x_ring * 1e9, hist_y_ring)
-        pl.xlabel('Delay (ns)')
-        pl.title('G2 measurements (Ring algorithm)')
+        plt.figure()
+        plt.plot(hist_x_ring * 1e9, hist_y_ring)
+        plt.xlabel('Delay (ns)')
+        plt.title('G2 measurements (Ring algorithm)')
 
         # start_time = time.time()
         # print('\nclassic ALGORITHM')
@@ -602,14 +597,14 @@ if __name__ == '__main__':
         #                                        mode='classic')
         # stop_time = time.time()
         # print('g2 calculation took', stop_time - start_time, 's')
-        # pl.figure()
-        # pl.plot(hist_x_classic * 1e9, hist_y_classic)
-        # pl.xlabel('Delay (ns)')
-        # pl.title('G2 measurements (Classic algorithm)')
+        # plt.figure()
+        # plt.plot(hist_x_classic * 1e9, hist_y_classic)
+        # plt.xlabel('Delay (ns)')
+        # plt.title('G2 measurements (Classic algorithm)')
 
-        # pl.figure()
-        # pl.plot(hist_x_classic * 1e9, hist_y_classic-hist_y_ring)
-        # pl.xlabel('Delay (ns)')
-        # pl.title('Difference')
+        # plt.figure()
+        # plt.plot(hist_x_classic * 1e9, hist_y_classic-hist_y_ring)
+        # plt.xlabel('Delay (ns)')
+        # plt.title('Difference')
 
-        pl.show()
+        plt.show()
