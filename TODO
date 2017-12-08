@@ -1,0 +1,9 @@
+- Fix metadata on setup.py.
+
+- clean up comments. Specially on parsers.c
+
+- Take care of HH2 files with old firmware
+
+- Add a simple test script. (already have one. Basically the __main__ section of readPTU)
+
+- rewrite the readme file
