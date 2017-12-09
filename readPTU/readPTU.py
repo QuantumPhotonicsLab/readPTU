@@ -586,7 +586,6 @@ if __name__ == '__main__':
                   [300001, 400000], [400001, 500000]]
 
         start_time = time.time()
-        print('\nRING ALGORITHM')
         hist_x_ring, hist_y_ring = ptu_meas.calculate_g2(g2_window, g2_resolution,
                                                          post_selec_ranges=None,
                                                          buffer_size=2**6,
