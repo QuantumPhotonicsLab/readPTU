@@ -385,8 +385,6 @@ class PTUmeasurement():
              nb_of_bins,
              n_threads)
 
-
-
         time_vector = np.arange(nb_of_bins, dtype='float') * resolution * self.meas.globres
         time_trace = np.array([element for element in c_time_trace])
         rec_num_trace = np.array([element for element in c_rec_num_trace])
@@ -411,9 +409,11 @@ class PTUmeasurement():
                 (default 0, sync)
             channel_stop (int, optional): channel number of the stop photons
                 (default 1)
-            mode (fast, ring or classic): fast is the naive algorithm
+            mode (fast, ring, classics, symmetric): fast is the naive algorithm
                                           classic uses a linked list
                                           ring uses a ring buffer
+                                          symmetric uses ring buffer and
+                                          also looks at negative deltas.
 
         Returns:
             2-tuple: numpy array vector of times (beginning of each time-bin),
@@ -428,14 +428,25 @@ class PTUmeasurement():
             mode_idx = 1
         elif mode == 'classic':
             mode_idx = 2
+        elif mode == 'symmetric':
+            mode_idx = 3
         else:
             print('Non-Existent Mode!')
             assert(0)
 
         # Resolution in globres units, typically picoseconds
+        if mode == 'symmetric':
+            correlation_window /= 2.
+
         resolution = int(float(resolution) / self.meas.globres)
         correlation_window = int(float(correlation_window) / self.meas.globres)
         nb_of_bins = int(np.floor(float(correlation_window) / resolution))
+        if mode == 'symmetric':
+            nb_of_bins *= 2
+
+        # Make sure the correlation window is a multiple of the resolution
+        correlation_window = nb_of_bins * resolution
+
         histogram = np.zeros(nb_of_bins)
 
         # Prepare the post selection ranges
@@ -461,8 +472,6 @@ class PTUmeasurement():
             c_post_select_starts[i] = post_selec_ranges[i][0]
             c_post_select_stops[i] = post_selec_ranges[i][1]
 
-        correlation_window = nb_of_bins * resolution
-
         filepath = ffi.new("char[]", self.meas.filename.encode('ascii'))
 
         # Calculate
@@ -483,7 +492,10 @@ class PTUmeasurement():
         for i in range(nb_of_bins):
             histogram[i] = c_histogram[i]
 
-        time_vector = np.arange(nb_of_bins, dtype='float') * resolution * self.meas.globres
+        if mode == 'symmetric':
+            time_vector = np.linspace(-nb_of_bins/2., nb_of_bins/2., nb_of_bins, dtype='float') * resolution * self.meas.globres
+        else:
+            time_vector = np.arange(nb_of_bins, dtype='float') * resolution * self.meas.globres
         return (time_vector, np.array(histogram))
 
 
@@ -541,7 +553,7 @@ if __name__ == '__main__':
 
     timetrace_resolution = 10    # in seconds
     g2_resolution = 600 * 1e-12  # picoseconds * 1e-12 to change to seconds
-    g2_window = 500000 * 1e-12   # picoseconds * 1e-12 to change to seconds
+    g2_window = 50000 * 1e-12   # picoseconds * 1e-12 to change to seconds
 
     filename = r'/Users/garfield/Downloads/test_big.ptu'
 
@@ -575,11 +587,11 @@ if __name__ == '__main__':
 
         start_time = time.time()
         print('\nRING ALGORITHM')
-        hist_x_ring, hist_y_ring = ptu_meas.calculate_g2(g2_window, g2_resolution, 
-                                                         post_selec_ranges=None, 
-                                                         buffer_size=2**4, 
-                                                         n_threads=4, 
-                                                         mode='ring')
+        hist_x_ring, hist_y_ring = ptu_meas.calculate_g2(g2_window, g2_resolution,
+                                                         post_selec_ranges=None,
+                                                         buffer_size=2**6,
+                                                         n_threads=4,
+                                                         mode='symmetric')
         stop_time = time.time()
         read_speed = os.path.getsize(filename)/float(stop_time - start_time)/1024./1024./1024.
         print('g2 calculation took', stop_time - start_time, 's')
