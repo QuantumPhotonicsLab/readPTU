@@ -433,7 +433,7 @@ static inline THREAD_FUNC_DEF(g2_symmetric_section) {
                 for(i = cbuf_2.head-1; i > (cbuf_2.head-1-cbuf_2.count); i--) {
                     delta = timetag - cbuf_2.buffer[i];
                     idx = central_bin - (uint64_t)(delta * nb_of_bins / correlation_window);
-                    if (idx < central_bin && central_bin >= 0) {
+                    if (idx < central_bin) {
                         ptr_hist[idx]++;
                     } else break;
                 }
@@ -445,7 +445,7 @@ static inline THREAD_FUNC_DEF(g2_symmetric_section) {
                 for(i = cbuf_1.head-1; i > (cbuf_1.head-1-cbuf_1.count); i--) {
                     delta = timetag - cbuf_1.buffer[i];
                     idx = central_bin + (uint64_t)(delta * nb_of_bins / correlation_window);
-                    if (idx < nb_of_bins && central_bin >= 0) {
+                    if (idx < nb_of_bins) {
                         ptr_hist[idx]++;
                     } else break;
                 }
