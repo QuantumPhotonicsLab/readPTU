@@ -324,6 +324,7 @@ static inline THREAD_FUNC_DEF(g2_fast_section) {
     uint64_t delta=0;
     uint64_t correlation_window = args->correlation_window;
     const int nb_of_bins = args->n_bins;
+    const uint64_t resolution = correlation_window / nb_of_bins;
 
     uint64_t RecNum;
     uint64_t RecNum_STOP;
@@ -366,7 +367,7 @@ static inline THREAD_FUNC_DEF(g2_fast_section) {
             // ADD DELAY TO HISTOGRAM
             delta = stop_time - start_time;
             if (delta < correlation_window && record_arrived) {
-                i = (uint64_t)(delta * nb_of_bins / correlation_window);
+                i = delta / resolution;
                 args->ptr_hist[i]++;
             }
         } // end g2 algo
@@ -396,10 +397,11 @@ static inline THREAD_FUNC_DEF(g2_symmetric_section) {
     uint64_t delta, idx;
     int *ptr_hist = args->ptr_hist;
     const int nb_of_bins = args->n_bins;
-    const int central_bin = nb_of_bins/2;
+    const uint64_t central_bin = nb_of_bins/2;
     const int channel_start = args->channel_start;
     const int channel_stop = args->channel_stop;
     uint64_t correlation_window = args->correlation_window;
+    const uint64_t resolution = correlation_window / nb_of_bins;
 
     int i;  // index for the loop over circular buffer
     uint64_t RecNum;
@@ -432,7 +434,7 @@ static inline THREAD_FUNC_DEF(g2_symmetric_section) {
                 circular_buf_put(&cbuf_1, timetag);
                 for(i = cbuf_2.head-1; i > (cbuf_2.head-1-cbuf_2.count); i--) {
                     delta = timetag - cbuf_2.buffer[i];
-                    idx = central_bin - (uint64_t)(delta * nb_of_bins / correlation_window);
+                    idx = central_bin - delta / resolution;
                     if (idx < central_bin) {
                         ptr_hist[idx]++;
                     } else break;
@@ -444,7 +446,7 @@ static inline THREAD_FUNC_DEF(g2_symmetric_section) {
                 circular_buf_put(&cbuf_2, timetag);
                 for(i = cbuf_1.head-1; i > (cbuf_1.head-1-cbuf_1.count); i--) {
                     delta = timetag - cbuf_1.buffer[i];
-                    idx = central_bin + (uint64_t)(delta * nb_of_bins / correlation_window);
+                    idx = central_bin + delta / resolution;
                     if (idx < nb_of_bins) {
                         ptr_hist[idx]++;
                     } else break;
@@ -481,6 +483,7 @@ static inline THREAD_FUNC_DEF(g2_ring_section) {
     const int channel_start = args->channel_start;
     const int channel_stop = args->channel_stop;
     uint64_t correlation_window = args->correlation_window;
+    const uint64_t resolution = correlation_window / nb_of_bins;
 
     int i;  // index for the loop over circular buffer
     uint64_t RecNum;
@@ -517,7 +520,7 @@ static inline THREAD_FUNC_DEF(g2_ring_section) {
                 for(i = cbuf.head-1; i > (cbuf.head-1-cbuf.count); i--) {
                     delta = timetag - cbuf.buffer[i];
                     if (delta < correlation_window) {
-                        idx = (uint64_t)(delta * nb_of_bins / correlation_window);
+                        idx = delta / resolution;
                         args->ptr_hist[idx]++;
                     } else break;
                 }
