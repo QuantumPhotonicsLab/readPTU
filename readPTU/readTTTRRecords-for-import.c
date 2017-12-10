@@ -479,6 +479,7 @@ static inline THREAD_FUNC_DEF(g2_ring_section) {
 
     // variables for g2 algo
     uint64_t delta, idx;
+    int *ptr_hist = args->ptr_hist;
     const int nb_of_bins = args->n_bins;
     const int channel_start = args->channel_start;
     const int channel_stop = args->channel_stop;
@@ -521,7 +522,7 @@ static inline THREAD_FUNC_DEF(g2_ring_section) {
                     delta = timetag - cbuf.buffer[i];
                     if (delta < correlation_window) {
                         idx = delta / resolution;
-                        args->ptr_hist[idx]++;
+                        ptr_hist[idx]++;
                     } else break;
                 }
             }
