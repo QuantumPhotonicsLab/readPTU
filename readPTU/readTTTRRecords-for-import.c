@@ -34,12 +34,12 @@ int c_fseek(FILE *filehandle, long int offset)
 }
 
 
-static inline bool next_photon(FILE* filehandle, uint64_t * RecNum,
+static inline bool next_record(FILE* filehandle, uint64_t * RecNum,
                                uint64_t StopRecord, record_buf_t *buffer,
                                uint64_t *oflcorrection, uint64_t *timetag, int *channel)
 {
     /*
-     next_photon() reads the next records of a file until it finds a photon, and then returns.
+     next_record() reads the next records of a file until it finds a photon, and then returns.
      Inputs:
      filehandle         FILE pointer with an open record file to read the photons
      RecNum             pointer to the index of the record being read
@@ -138,7 +138,7 @@ static inline THREAD_FUNC_DEF(timetrace_section) {
     uint64_t timetag = 0;
     int channel = -1;
 
-    bool photon_arrived = true;
+    bool record_arrived = true;
     uint64_t RecNum = args->RecNum_start;
     uint64_t end_of_bin;
 
@@ -153,13 +153,13 @@ static inline THREAD_FUNC_DEF(timetrace_section) {
     {
         end_of_bin = (i+1) * args->time_bin_length;
         photon_counter = 0;
-        while (timetag < end_of_bin && photon_arrived) {
-            photon_arrived = next_photon(filehandle, &RecNum, args->RecNum_stop,
+        while (timetag < end_of_bin && record_arrived) {
+            record_arrived = next_record(filehandle, &RecNum, args->RecNum_stop,
                                          &TTTRRecord, &oflcorrection, &timetag, &channel);
             photon_counter += (channel >= 0);
         }
 
-        if (photon_arrived) { // the last incomplete bin is discarded
+        if (record_arrived) { // the last incomplete bin is discarded
             args->ptr_recnum[i] = RecNum;
             args->ptr_trace[i] = photon_counter;
         } else break; // no photons left
@@ -281,7 +281,7 @@ void timetrace(char filepath[], int end_of_header, uint64_t RecNum_start,
 // G2 ALGORITHMS //
 // = = = = = = = //
 
-enum mode {FAST, RING, CLASSIC};
+enum mode {FAST, RING, CLASSIC, SYMMETRIC};
 
 typedef struct _g2_args {
         int end_of_header;
@@ -324,14 +324,15 @@ static inline THREAD_FUNC_DEF(g2_fast_section) {
     uint64_t delta=0;
     uint64_t correlation_window = args->correlation_window;
     const int nb_of_bins = args->n_bins;
+    const uint64_t resolution = correlation_window / nb_of_bins;
 
     uint64_t RecNum;
     uint64_t RecNum_STOP;
-    bool photon_arrived = true;
+    bool record_arrived = true;
 
     // loop over postselection ranges assigned to thread
     for (int range_idx = 0; range_idx < args->n_ranges; range_idx++) {
-        photon_arrived = true;
+        record_arrived = true;
         RecNum = args->RecNum_start[args->first_range + range_idx];
         RecNum_STOP = args->RecNum_stop[args->first_range + range_idx];
         c_fseek(filehandle,
@@ -348,29 +349,113 @@ static inline THREAD_FUNC_DEF(g2_fast_section) {
         TTTRRecord.head = 0;
         channel = -1;
 
-        while(photon_arrived){
+        while(record_arrived){
             // FIND NEXT START PHOTON
-            while(photon_arrived && channel != channel_start){
-                photon_arrived = next_photon(filehandle, &RecNum, RecNum_STOP,
+            while(record_arrived && channel != channel_start){
+                record_arrived = next_record(filehandle, &RecNum, RecNum_STOP,
                                              &TTTRRecord, &oflcorrection, &start_time, &channel);
             }
             // found start photon
 
             // FIND NEXT STOP PHOTON
-            while (photon_arrived && channel != channel_stop) {
-                photon_arrived = next_photon(filehandle, &RecNum, RecNum_STOP,
+            while (record_arrived && channel != channel_stop) {
+                record_arrived = next_record(filehandle, &RecNum, RecNum_STOP,
                                              &TTTRRecord, &oflcorrection, &stop_time, &channel);
             }
             // found stop photon
             
             // ADD DELAY TO HISTOGRAM
             delta = stop_time - start_time;
-            if (delta < correlation_window && photon_arrived) {
-                i = (uint64_t)(delta * nb_of_bins / correlation_window);
+            if (delta < correlation_window && record_arrived) {
+                i = delta / resolution;
                 args->ptr_hist[i]++;
             }
         } // end g2 algo
     }
+    fclose(filehandle);
+    return RETURN_SECTION;
+}
+
+static inline THREAD_FUNC_DEF(g2_symmetric_section) {
+    // Get a thread filehandle
+    const g2_args *args = (g2_args*)arguments;
+
+    // Prepare the file
+    FILE *filehandle = fopen(args->filepath, "rb");
+
+    // prepare record buffer
+    record_buf_t TTTRRecord;
+    TTTRRecord.records = args->buffer;
+    record_buf_reset(&TTTRRecord);
+
+    // return values next photon
+    uint64_t oflcorrection = 0;
+    int channel = -1;
+    uint64_t timetag = 0;
+
+    // variables for g2 algo
+    uint64_t delta, idx;
+    int *ptr_hist = args->ptr_hist;
+    const int nb_of_bins = args->n_bins;
+    const uint64_t central_bin = nb_of_bins/2;
+    const int channel_start = args->channel_start;
+    const int channel_stop = args->channel_stop;
+    uint64_t correlation_window = args->correlation_window;
+    const uint64_t resolution = correlation_window / nb_of_bins;
+
+    int i;  // index for the loop over circular buffer
+    uint64_t RecNum;
+    uint64_t RecNum_STOP;
+
+    // Prepare the circular buffer for the start photons
+    circular_buf_t cbuf_2 = circular_buf_allocate((int)args->buffer_size);
+    circular_buf_t cbuf_1 = circular_buf_allocate((int)args->buffer_size);
+
+    // loop over the postselection ranges assigned to thread
+    for (int range_idx = 0; range_idx < args->n_ranges; range_idx++) {
+        RecNum = args->RecNum_start[args->first_range + range_idx];
+        RecNum_STOP = args->RecNum_stop[args->first_range + range_idx];
+        c_fseek(filehandle,
+            (long int)(args->end_of_header + (4 * RecNum) ));
+
+        // start g2 algo
+        // prefill circular buffer
+        if(fread(TTTRRecord.records, RECORD_CHUNK, sizeof(uint32_t), filehandle)==0) {
+            if (ferror(filehandle)){
+                perror("Error detected while reading file.");
+                exit(0);
+            }
+        }
+        TTTRRecord.head = 0;
+        while(next_record(filehandle, &RecNum, RecNum_STOP, &TTTRRecord,
+                          &oflcorrection, &timetag, &channel)) {
+
+            if (channel == channel_start) {
+                circular_buf_put(&cbuf_1, timetag);
+                for(i = cbuf_2.head-1; i > (cbuf_2.head-1-cbuf_2.count); i--) {
+                    delta = timetag - cbuf_2.buffer[i];
+                    idx = central_bin - delta / resolution;
+                    if (idx < central_bin) {
+                        ptr_hist[idx]++;
+                    } else break;
+                }
+                continue;
+            }
+            
+            if (channel == channel_stop) {
+                circular_buf_put(&cbuf_2, timetag);
+                for(i = cbuf_1.head-1; i > (cbuf_1.head-1-cbuf_1.count); i--) {
+                    delta = timetag - cbuf_1.buffer[i];
+                    idx = central_bin + delta / resolution;
+                    if (idx < nb_of_bins) {
+                        ptr_hist[idx]++;
+                    } else break;
+                }
+            }
+        } // end g2 algo
+    }
+    free(cbuf_1.buffer);
+    free(cbuf_2.buffer);
     fclose(filehandle);
     return RETURN_SECTION;
 }
@@ -394,10 +479,12 @@ static inline THREAD_FUNC_DEF(g2_ring_section) {
 
     // variables for g2 algo
     uint64_t delta, idx;
+    int *ptr_hist = args->ptr_hist;
     const int nb_of_bins = args->n_bins;
     const int channel_start = args->channel_start;
     const int channel_stop = args->channel_stop;
     uint64_t correlation_window = args->correlation_window;
+    const uint64_t resolution = correlation_window / nb_of_bins;
 
     int i;  // index for the loop over circular buffer
     uint64_t RecNum;
@@ -422,7 +509,7 @@ static inline THREAD_FUNC_DEF(g2_ring_section) {
             }
         }
         TTTRRecord.head = 0;
-        while(next_photon(filehandle, &RecNum, RecNum_STOP, &TTTRRecord,
+        while(next_record(filehandle, &RecNum, RecNum_STOP, &TTTRRecord,
                           &oflcorrection, &timetag, &channel)) {
 
             if (channel == channel_start) {
@@ -434,8 +521,8 @@ static inline THREAD_FUNC_DEF(g2_ring_section) {
                 for(i = cbuf.head-1; i > (cbuf.head-1-cbuf.count); i--) {
                     delta = timetag - cbuf.buffer[i];
                     if (delta < correlation_window) {
-                        idx = (uint64_t)(delta * nb_of_bins / correlation_window);
-                        args->ptr_hist[idx]++;
+                        idx = delta / resolution;
+                        ptr_hist[idx]++;
                     } else break;
                 }
             }
@@ -476,11 +563,11 @@ static inline THREAD_FUNC_DEF(g2_classic_section) {
     const int channel_stop = args->channel_stop;
     uint64_t RecNum, RecNum_STOP;
     const int nb_of_bins = args->n_bins;
-    bool photon_arrived;
+    bool record_arrived;
     
     for (int range_idx = 0; range_idx < args->n_ranges; range_idx++) {
         // reset file reader and go to the start position RecNum_start
-        photon_arrived=1;
+        record_arrived=1;
         RecNum = args->RecNum_start[args->first_range + range_idx];
         RecNum_STOP = args->RecNum_stop[args->first_range + range_idx];
         c_fseek(filehandle,
@@ -511,7 +598,7 @@ static inline THREAD_FUNC_DEF(g2_classic_section) {
                 exit(0);
             }
         }
-        while(photon_arrived || start_buff_length > 0){            
+        while(record_arrived || start_buff_length > 0){            
             // FIND NEXT START PHOTON
             // first, take first start photon in buffer
             if(start_buff_length > 0){
@@ -520,40 +607,40 @@ static inline THREAD_FUNC_DEF(g2_classic_section) {
             // if start buffer is empty, read photons until a start photon is found, and feed stop buffer in the process
             else {
                 channel = -1;
-                while(channel != channel_start && photon_arrived){
-                    photon_arrived = next_photon(filehandle, &RecNum, RecNum_STOP,
+                while(channel != channel_start && record_arrived){
+                    record_arrived = next_record(filehandle, &RecNum, RecNum_STOP,
                               &TTTRRecord, &oflcorrection, &timetag, &channel);
                     if (channel == channel_stop){ // store in stop photons buffer
                         push(stop_buff_head, timetag, &stop_buff_length);
                     }
-                    else { // channel 0
+                    else if (channel == channel_start) { // channel 0
                         start_time = timetag;
                     }
                 }
-                if (channel != channel_start && photon_arrived) {
+                if (channel != channel_start && record_arrived) {
                     break;
                 }
             }
             correlation_window_end = start_time + correlation_window;
-            
+
             // FIND ALL STOP PHOTONS IN CORRELATION WINDOW
             // complete stop photons array with new stop photons from buffer fitting in correlation window
             while(stop_buff_length > 0 && stop_buff_head->next->val < correlation_window_end) {
                 push(stop_corr_buff_head, pop(stop_buff_head, &stop_buff_length), &stop_corr_buff_length);
             }
-            
+
             // if stop buffer is empty, read photons until the time gets out of the
             // correlation window, and feed start buffer and the stop photons array in the process
             if (stop_buff_length == 0) {
-                while (timetag < correlation_window_end && photon_arrived) {
-                    photon_arrived = next_photon(filehandle, &RecNum, RecNum_STOP,
+                while (timetag < correlation_window_end && record_arrived) {
+                    record_arrived = next_record(filehandle, &RecNum, RecNum_STOP,
                               &TTTRRecord, &oflcorrection, &timetag, &channel);
                     // start photon -> store in start photon buffer (to be used later)
                     if (channel == channel_start) {
                         push(start_buff_head, timetag, &start_buff_length);
                     }
                     // stop photon
-                    else {
+                    else if (channel == channel_stop) {
                         // qualifies in correlation window -> store in correlation window stop buffer
                         if (timetag < correlation_window_end) {
                             push(stop_corr_buff_head, timetag, &stop_corr_buff_length);
@@ -576,7 +663,7 @@ static inline THREAD_FUNC_DEF(g2_classic_section) {
             }
             // perform a histogram of the stop times - start time and add it to the main histogram result
             current = stop_corr_buff_head->next;
-            while(current != NULL && photon_arrived) {
+            while(current != NULL && record_arrived) {
                 if (current->val - start_time < correlation_window) {
                     i = (uint64_t) (current->val - start_time) * nb_of_bins / correlation_window;
                     args->ptr_hist[i]++;
@@ -683,6 +770,9 @@ void calculate_g2(char filepath[], int end_of_header,
             case CLASSIC:
                 CREATE_THREAD(g2_classic_section);
                 break;
+            case SYMMETRIC:
+                CREATE_THREAD(g2_symmetric_section);
+                break;
             default:
                 printf("%s\n", "NON-EXISTENT G2 MODE");
                 goto free_memory;
@@ -705,7 +795,6 @@ void calculate_g2(char filepath[], int end_of_header,
         {
             histogram[j] += thread_args[i].ptr_hist[j];
         }
-        
     }
 
     free_memory:
