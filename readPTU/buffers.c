@@ -67,7 +67,7 @@ static inline void circular_buf_oldest(circular_buf_t * cbuf, uint64_t * data) {
     // other than computing g2.
     if(cbuf && data) {
         if(cbuf->count < cbuf->size) {
-            *data = cbuf->buffer[cbuf->size]; // middle element
+            *data = cbuf->buffer[0];
         } else {
             *data = cbuf->buffer[cbuf->head];
         }
