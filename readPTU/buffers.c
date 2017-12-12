@@ -37,7 +37,7 @@ circular_buf_t circular_buf_allocate(int size) {
     circular_buf_t cbuf;
     cbuf.size = size;
     circular_buf_reset(&cbuf);
-    cbuf.buffer = calloc(2*cbuf.size, sizeof(uint64_t)); // set memory to zero so we have a proper
+    cbuf.buffer = calloc(cbuf.size, sizeof(uint64_t)); // set memory to zero so we have a proper
 
     return cbuf;
 }
@@ -45,7 +45,7 @@ circular_buf_t circular_buf_allocate(int size) {
 void circular_buf_reset(circular_buf_t * cbuf)
 {
     if(cbuf) {
-        cbuf->head = cbuf->size;
+        cbuf->head = 0;
         cbuf->count = 0;
     }
 }
@@ -53,8 +53,7 @@ void circular_buf_reset(circular_buf_t * cbuf)
 static inline void circular_buf_put(circular_buf_t * cbuf, uint64_t data)
 {
     cbuf->buffer[cbuf->head] = data;
-    cbuf->buffer[cbuf->head - cbuf->size] = data;
-    cbuf->head = ((cbuf->head + 1) % cbuf->size) + cbuf->size;
+    cbuf->head = (cbuf->head + 1) % cbuf->size;
     if(cbuf->count < cbuf->size) {
         cbuf->count = cbuf->count + 1;
     }
@@ -68,10 +67,20 @@ static inline void circular_buf_oldest(circular_buf_t * cbuf, uint64_t * data) {
     // other than computing g2.
     if(cbuf && data) {
         if(cbuf->count < cbuf->size) {
-            *data = cbuf->buffer[0];
+            *data = cbuf->buffer[cbuf->size]; // middle element
         } else {
             *data = cbuf->buffer[cbuf->head];
         }
+    }
+}
+
+static inline void circular_buf_grow(circular_buf_t *cbuf) {
+    cbuf->size = 2*cbuf->size;  // double the space as previous array
+    cbuf->buffer = realloc(cbuf->buffer, cbuf->size * sizeof(uint64_t));
+    // set memory to zero so we have a proper
+    for (int i = (cbuf->size)/2; i < cbuf->size; ++i)
+    {
+        cbuf->buffer[i]=0;
     }
 }
 
