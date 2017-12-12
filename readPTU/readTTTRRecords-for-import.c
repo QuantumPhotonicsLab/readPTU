@@ -477,8 +477,6 @@ static inline THREAD_FUNC_DEF(g2_ring_section) {
     int channel = -1;
     uint64_t timetag = 0;
     uint64_t oldest_timetag = 0;
-    // uint64_t min_corr_win = 1000000000;
-    // uint64_t aux;
 
     // variables for g2 algo
     uint64_t delta, idx;
@@ -498,6 +496,7 @@ static inline THREAD_FUNC_DEF(g2_ring_section) {
 
     // loop over the postselection ranges assigned to thread
     for (int range_idx = 0; range_idx < args->n_ranges; range_idx++) {
+        circular_buf_reset(&cbuf);
         RecNum = args->RecNum_start[args->first_range + range_idx];
         RecNum_STOP = args->RecNum_stop[args->first_range + range_idx];
         c_fseek(filehandle,

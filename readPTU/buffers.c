@@ -36,8 +36,8 @@ static inline void circular_buf_oldest(circular_buf_t * cbuf, uint64_t * data);
 circular_buf_t circular_buf_allocate(int size) {
     circular_buf_t cbuf;
     cbuf.size = size;
+    cbuf.buffer = malloc(cbuf.size * sizeof(uint64_t)); // set memory to zero so we have a proper
     circular_buf_reset(&cbuf);
-    cbuf.buffer = calloc(cbuf.size, sizeof(uint64_t)); // set memory to zero so we have a proper
 
     return cbuf;
 }
@@ -47,6 +47,10 @@ void circular_buf_reset(circular_buf_t * cbuf)
     if(cbuf) {
         cbuf->head = 0;
         cbuf->count = 0;
+        for (int i = 0; i < cbuf->size; ++i)
+        {
+            cbuf->buffer[i] = 0;
+        }
     }
 }
 
