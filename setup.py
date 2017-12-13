@@ -43,7 +43,7 @@ def compile_library():
         ffibuilder.cdef(prototypes)
         ffibuilder.set_source("readPTU._readTTTRRecords_{}".format(code),
                               codes_dict[code],
-                              extra_compile_args=["-O3", "-pthread"])
+                              extra_compile_args=["-O3"])
         print('\nCompiling version {}'.format(code))
         ffibuilder.compile(verbose=True)
         remove('./readPTU/_readTTTRRecords_{}.c'.format(code))

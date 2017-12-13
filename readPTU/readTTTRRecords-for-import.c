@@ -402,6 +402,7 @@ static inline THREAD_FUNC_DEF(g2_symmetric_section) {
     const int channel_stop = args->channel_stop;
     uint64_t correlation_window = args->correlation_window;
     const uint64_t resolution = correlation_window / nb_of_bins;
+    uint64_t oldest_timetag = 0;
 
     int i;  // index for the loop over circular buffer
     uint64_t RecNum;
@@ -432,8 +433,12 @@ static inline THREAD_FUNC_DEF(g2_symmetric_section) {
 
             if (channel == channel_start) {
                 circular_buf_put(&cbuf_1, timetag);
+                circular_buf_oldest(&cbuf_1, &oldest_timetag);
+                if ( (timetag-oldest_timetag) < correlation_window && cbuf_1.count == cbuf_1.size) {
+                    circular_buf_grow(&cbuf_1);
+                }
                 for(i = cbuf_2.head-1; i > (cbuf_2.head-1-cbuf_2.count); i--) {
-                    delta = timetag - cbuf_2.buffer[i];
+                    delta = timetag - cbuf_2.buffer[(i+2*cbuf_2.count)%cbuf_2.count];
                     idx = central_bin - delta / resolution;
                     if (idx < central_bin) {
                         ptr_hist[idx]++;
@@ -444,8 +449,12 @@ static inline THREAD_FUNC_DEF(g2_symmetric_section) {
             
             if (channel == channel_stop) {
                 circular_buf_put(&cbuf_2, timetag);
+                circular_buf_oldest(&cbuf_2, &oldest_timetag);
+                if ( (timetag-oldest_timetag) < correlation_window && cbuf_2.count == cbuf_2.size) {
+                    circular_buf_grow(&cbuf_2);
+                }
                 for(i = cbuf_1.head-1; i > (cbuf_1.head-1-cbuf_1.count); i--) {
-                    delta = timetag - cbuf_1.buffer[i];
+                    delta = timetag - cbuf_1.buffer[(i+2*cbuf_1.count)%cbuf_1.count];
                     idx = central_bin + delta / resolution;
                     if (idx < nb_of_bins) {
                         ptr_hist[idx]++;
@@ -477,8 +486,6 @@ static inline THREAD_FUNC_DEF(g2_ring_section) {
     int channel = -1;
     uint64_t timetag = 0;
     uint64_t oldest_timetag = 0;
-    // uint64_t min_corr_win = 1000000000;
-    // uint64_t aux;
 
     // variables for g2 algo
     uint64_t delta, idx;
@@ -498,6 +505,7 @@ static inline THREAD_FUNC_DEF(g2_ring_section) {
 
     // loop over the postselection ranges assigned to thread
     for (int range_idx = 0; range_idx < args->n_ranges; range_idx++) {
+        circular_buf_reset(&cbuf);
         RecNum = args->RecNum_start[args->first_range + range_idx];
         RecNum_STOP = args->RecNum_stop[args->first_range + range_idx];
         c_fseek(filehandle,
@@ -519,7 +527,6 @@ static inline THREAD_FUNC_DEF(g2_ring_section) {
                 circular_buf_put(&cbuf, timetag);
                 circular_buf_oldest(&cbuf, &oldest_timetag);
                 if ( (timetag-oldest_timetag) < correlation_window && cbuf.count == cbuf.size) {
-                    printf("%s\n", "regrowing buffer");
                     circular_buf_grow(&cbuf);
                 }
                 continue;
