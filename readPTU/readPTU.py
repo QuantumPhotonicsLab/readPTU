@@ -391,9 +391,9 @@ class PTUmeasurement():
 
         return (time_vector, time_trace, rec_num_trace)
 
-    def calculate_g2(self, correlation_window, resolution,
+    def calculate_g2(self, correlation_window, resolution=None,
                      post_selec_ranges=None, channel_start=0, channel_stop=1,
-                     mode='ring', buffer_size=2**7, n_threads=2):
+                     mode='ring', buffer_size=2**2, n_threads=2):
         """
         Return the g2 calculated from the file, given the start and stop
         channels and the record number range to analyse.
@@ -422,6 +422,21 @@ class PTUmeasurement():
         """
         g2_f = self._select_record_library().calculate_g2
 
+        # Resolution in globres units, typically picoseconds
+        if mode == 'symmetric':
+            correlation_window /= 2.
+
+        correlation_window = int(float(correlation_window) / self.meas.globres)
+        if resolution is None:
+            nb_of_bins = 1024
+            resolution = int(correlation_window / float(nb_of_bins))
+        else:
+            resolution = int(float(resolution) / self.meas.globres)
+
+        nb_of_bins = int(np.floor(float(correlation_window) / resolution))
+        if mode == 'symmetric':
+            nb_of_bins *= 2
+
         if mode == 'fast':
             mode_idx = 0
         elif mode == 'ring':
@@ -433,16 +448,6 @@ class PTUmeasurement():
         else:
             print('Non-Existent Mode!')
             assert(0)
-
-        # Resolution in globres units, typically picoseconds
-        if mode == 'symmetric':
-            correlation_window /= 2.
-
-        resolution = int(float(resolution) / self.meas.globres)
-        correlation_window = int(float(correlation_window) / self.meas.globres)
-        nb_of_bins = int(np.floor(float(correlation_window) / resolution))
-        if mode == 'symmetric':
-            nb_of_bins *= 2
 
         # Make sure the correlation window is a multiple of the resolution
         correlation_window = nb_of_bins * resolution
@@ -597,7 +602,7 @@ if __name__ == '__main__':
         plt.figure()
         plt.plot(hist_x_ring * 1e9, hist_y_ring)
         plt.xlabel('Delay (ns)')
-        plt.title('G2 measurements (Ring algorithm)')
+        plt.title('G2 measurements')
 
         # start_time = time.time()
         # print('\nclassic ALGORITHM')
