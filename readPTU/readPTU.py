@@ -29,10 +29,10 @@ import struct
 import time
 import collections as coll
 
-from _readTTTRRecords_HHT2_HH2 import ffi, lib
-from _readTTTRRecords_HHT2_HH2 import lib as HHT2_HH2_lib
-from _readTTTRRecords_HHT2_HH1 import lib as HHT2_HH1_lib
-from _readTTTRRecords_PHT2 import lib as PHT2_lib
+from readPTU._readTTTRRecords_HHT2_HH2 import ffi, lib
+from readPTU._readTTTRRecords_HHT2_HH2 import lib as HHT2_HH2_lib
+from readPTU._readTTTRRecords_HHT2_HH1 import lib as HHT2_HH1_lib
+from readPTU._readTTTRRecords_PHT2 import lib as PHT2_lib
 
 
 class PTUfile():
