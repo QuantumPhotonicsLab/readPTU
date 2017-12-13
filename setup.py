@@ -1,4 +1,5 @@
 from setuptools.command.install import install
+from setuptools.command.develop import develop
 
 from cffi import FFI
 from os import remove
@@ -56,6 +57,13 @@ class Build(install):
         compile_library()
         install.run(self)
 
+class Build_dev(develop):
+    """Custom handler for the 'install' command."""
+
+    def run(self):
+        compile_library()
+        develop.run(self)
+
 
 setuptools.setup(
     name='readPTU',
@@ -69,5 +77,5 @@ setuptools.setup(
     zip_safe=False,
     setup_requires=["cffi>=1.11.2"],
     install_requires=["cffi>=1.11.2"],
-    cmdclass={'install': Build},
+    cmdclass={'install': Build, 'develop': Build_dev},
     package_data={'': ['*.so', '*.c', '*.o']})
