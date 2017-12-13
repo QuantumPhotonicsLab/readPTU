@@ -774,7 +774,7 @@ void calculate_g2(char filepath[], int end_of_header,
         }
     }
 
-    printf("%s%d", "G2 mode: ", mode);
+    printf("%s%d\n", "G2 mode: ", mode);
     for (int i = 0; i < n_threads; ++i) {
         switch (mode) {
             case FAST:
