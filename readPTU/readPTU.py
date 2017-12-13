@@ -394,7 +394,7 @@ class PTUmeasurement():
 
     def calculate_g2(self, correlation_window, resolution=None,
                      post_selec_ranges=None, channel_start=0, channel_stop=1,
-                     mode='ring', buffer_size=2**2, n_threads=2):
+                     mode='ring', n_threads=2):
         """
         Return the g2 calculated from the file, given the start and stop
         channels and the record number range to analyse.
@@ -479,6 +479,7 @@ class PTUmeasurement():
             c_post_select_stops[i] = post_selec_ranges[i][1]
 
         filepath = ffi.new("char[]", self.meas.filename.encode('ascii'))
+        buffer_size = 2**4
 
         # Calculate
         g2_f(filepath,                     # file to analyze
