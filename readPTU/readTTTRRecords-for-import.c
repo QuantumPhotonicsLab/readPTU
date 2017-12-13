@@ -402,6 +402,7 @@ static inline THREAD_FUNC_DEF(g2_symmetric_section) {
     const int channel_stop = args->channel_stop;
     uint64_t correlation_window = args->correlation_window;
     const uint64_t resolution = correlation_window / nb_of_bins;
+    uint64_t oldest_timetag = 0;
 
     int i;  // index for the loop over circular buffer
     uint64_t RecNum;
@@ -432,8 +433,12 @@ static inline THREAD_FUNC_DEF(g2_symmetric_section) {
 
             if (channel == channel_start) {
                 circular_buf_put(&cbuf_1, timetag);
+                circular_buf_oldest(&cbuf_1, &oldest_timetag);
+                if ( (timetag-oldest_timetag) < correlation_window && cbuf_1.count == cbuf_1.size) {
+                    circular_buf_grow(&cbuf_1);
+                }
                 for(i = cbuf_2.head-1; i > (cbuf_2.head-1-cbuf_2.count); i--) {
-                    delta = timetag - cbuf_2.buffer[i];
+                    delta = timetag - cbuf_2.buffer[(i+2*cbuf_2.count)%cbuf_2.count];
                     idx = central_bin - delta / resolution;
                     if (idx < central_bin) {
                         ptr_hist[idx]++;
@@ -444,8 +449,12 @@ static inline THREAD_FUNC_DEF(g2_symmetric_section) {
             
             if (channel == channel_stop) {
                 circular_buf_put(&cbuf_2, timetag);
+                circular_buf_oldest(&cbuf_2, &oldest_timetag);
+                if ( (timetag-oldest_timetag) < correlation_window && cbuf_2.count == cbuf_2.size) {
+                    circular_buf_grow(&cbuf_2);
+                }
                 for(i = cbuf_1.head-1; i > (cbuf_1.head-1-cbuf_1.count); i--) {
-                    delta = timetag - cbuf_1.buffer[i];
+                    delta = timetag - cbuf_1.buffer[(i+2*cbuf_1.count)%cbuf_1.count];
                     idx = central_bin + delta / resolution;
                     if (idx < nb_of_bins) {
                         ptr_hist[idx]++;
@@ -518,7 +527,6 @@ static inline THREAD_FUNC_DEF(g2_ring_section) {
                 circular_buf_put(&cbuf, timetag);
                 circular_buf_oldest(&cbuf, &oldest_timetag);
                 if ( (timetag-oldest_timetag) < correlation_window && cbuf.count == cbuf.size) {
-                    printf("%s\n", "regrowing buffer");
                     circular_buf_grow(&cbuf);
                 }
                 continue;
@@ -766,7 +774,7 @@ void calculate_g2(char filepath[], int end_of_header,
         }
     }
 
-    printf("%s%d\n", "G2 mode: ", mode);
+    printf("%s%d", "G2 mode: ", mode);
     for (int i = 0; i < n_threads; ++i) {
         switch (mode) {
             case FAST:
