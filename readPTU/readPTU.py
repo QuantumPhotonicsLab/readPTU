@@ -343,7 +343,7 @@ class PTUmeasurement():
 
         return rec_lib
 
-    def timetrace(self, resolution=1, record_range=[0, None], time_range=None, n_threads=2):
+    def timetrace(self, resolution=1, record_range=[0, None], time_range=None, channel=-1, n_threads=2):
         """ 
         resolution is the time bin of the timetrace in seconds,
         record_range[0] is the record number of the position where to start the timetrace, default is 0
@@ -367,7 +367,7 @@ class PTUmeasurement():
         assert(0 <= record_range[0] < record_range[1] <= self.meas.num_records)
 
         if time_range is None:
-            time_range = self.meas.acq_time * self.meas.globres
+            time_range = self.meas.acq_time * 1.e-12  # acq_time is in picoseconds
 
         self.meas.reset_rec_num(at=record_range[0])
 
@@ -383,6 +383,7 @@ class PTUmeasurement():
              resolution,
              c_time_trace,
              c_rec_num_trace,
+             channel,
              nb_of_bins,
              n_threads)
 

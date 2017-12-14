@@ -104,6 +104,7 @@ typedef struct _timetrace_args {
         uint64_t *ptr_recnum;
         uint64_t RecNum_start;
         uint64_t RecNum_stop;
+        int select_channel;
         uint64_t time_bin_length;
         char *filepath;
     } timetrace_args;
@@ -153,10 +154,18 @@ static inline THREAD_FUNC_DEF(timetrace_section) {
     {
         end_of_bin = (i+1) * args->time_bin_length;
         photon_counter = 0;
-        while (timetag < end_of_bin && record_arrived) {
-            record_arrived = next_record(filehandle, &RecNum, args->RecNum_stop,
-                                         &TTTRRecord, &oflcorrection, &timetag, &channel);
-            photon_counter += (channel >= 0);
+        if (args->select_channel < 0) {
+            while (timetag < end_of_bin && record_arrived) {
+                record_arrived = next_record(filehandle, &RecNum, args->RecNum_stop,
+                                             &TTTRRecord, &oflcorrection, &timetag, &channel);
+                photon_counter += (channel >= 0);
+            }
+        } else {
+            while (timetag < end_of_bin && record_arrived) {
+                record_arrived = next_record(filehandle, &RecNum, args->RecNum_stop,
+                                             &TTTRRecord, &oflcorrection, &timetag, &channel);
+                photon_counter += (channel == args->select_channel);
+            }
         }
 
         if (record_arrived) { // the last incomplete bin is discarded
@@ -171,7 +180,7 @@ static inline THREAD_FUNC_DEF(timetrace_section) {
 
 void timetrace(char filepath[], int end_of_header, uint64_t RecNum_start,
                uint64_t NumRecords, uint64_t time_bin_length, int time_trace[],
-               uint64_t RecNum_trace[], int nb_of_bins, int n_threads) 
+               uint64_t RecNum_trace[], int select_channel, int nb_of_bins, int n_threads) 
 {
     int i, j, k; // looping indices
 
@@ -209,6 +218,7 @@ void timetrace(char filepath[], int end_of_header, uint64_t RecNum_start,
         thread_args[i].RecNum_start = (uint64_t)i * records_per_thread + RecNum_start;
         thread_args[i].RecNum_stop = ((uint64_t)i+1) * records_per_thread + RecNum_start;
         thread_args[i].n_bins = nb_of_bins;
+        thread_args[i].select_channel = select_channel;
         thread_args[i].time_bin_length = time_bin_length;
         thread_args[i].filepath = filepath;
     }

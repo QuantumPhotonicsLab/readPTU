@@ -27,8 +27,8 @@ def compile_library():
     prototypes = r"""
         void timetrace(char filepath[], int end_of_header, uint64_t RecNum_start,
                        uint64_t NumRecords, uint64_t time_bin_length,
-                       int time_trace[], uint64_t RecNum_trace[], int nb_of_bins,
-                       int n_threads);
+                       int time_trace[], uint64_t RecNum_trace[], int select_channel,
+                       int nb_of_bins, int n_threads);
         void calculate_g2(char filepath[], int end_of_header,
                           uint64_t *RecNum_start, uint64_t *RecNum_stop,
                           int nb_of_ranges, uint64_t max_time, int histogram[],
