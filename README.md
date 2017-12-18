@@ -1,17 +1,27 @@
 # readPTU library
 
-PicoQuant uses a specific homemade file format called PTU for its time-tag time-resolved measurements. This format is subsequent to the former .pt2 or .pt3 and can handle both T2 and T3 acquisition modes. 
+PicoQuant uses a specific homemade file format called PTU for its time-tag time-resolved measurements. This format is subsequent to the former .pt2 or .pt3 and can handle both T2 and T3 acquisition modes for a variety of devices (Hydraharp, Picoharp, Timeharp, etc.). 
 
-For now the library handles Hydraharp V2 T2 mode files (tested) but it should be able to handle Hydraharp V1 and Picoharp in T2 mode (untested but implemented).
+For now the library handles Hydraharp V2 and Picoharp files in T2 mode only — which are the only devices we have available for testing.
+
+## Installation
+
+To install this package, you need to have a compiler present on your system (`gcc`on Linux, `clang` on macOS or `vc` on Windows). you can run the `setup.py` file using 
+The package should compile the libraries when installed
 
 ## Use example
-To start, you should open the PTU file using a PTUfile() object. Constructing a PTUfile() object automatically opens the file and leaves it open for further analysis. As a first step, you can then print the header which will bring useful information on the measurement, like measurement time, number of records, record format type, etc.
+To start, you should import the readPTU library you should open the PTU file using a PTUfile() object. Constructing a PTUfile() object automatically opens the file and leaves it open for further analysis. As a first step, you can then print the header which will bring useful information on the measurement, like measurement time, number of records, record format type, etc.
 ```
 ptu_file = PTUfile(r'path/to/the/file')
 ptu_file.print_header()
 ```
 
-To analyse the file, e.g. to calculate a timetrace or a g2, you should use the PTUmeasurement() class. To construct a PTUmeasurement() object, you need to provide an open PTUfile object (```ptu_file``` in our example). For example, to calculate a timetrace with a time bin resolution of 1 second:
+To analyse the file, e.g. to calculate a timetrace or a g2, you should use the PTUmeasurement() class. To construct a PTUmeasurement() object, you need to provide an open PTUfile object (```ptu_file``` in our example).
+```
+ptu_meas = PTUmeasurement(ptu_file)
+```
+
+The PTUmeasurement() object has methods to analyse the measurement. For example, to calculate a timetrace with a time bin resolution of 1 second:
 ```
 timetrace_x, timetrace_y, timetrace_recnum = ptu_meas.time_trace(resolution=1)
 ```
@@ -39,3 +49,5 @@ If there is no dynamic library matching your system, you should simply execute _
 Raphaël Proux - 12/10/2017 - first release with T2 mode only and support of Hydraharp v2 tested, Hydraharp v1 and Picohard untested (but implemented).
 
 Raphaël Proux - 18/10/2017 - tested on windows 7 64 bits! It works!! (you need to add ```import setuptools``` in the python build file though).
+
+Guillem Ballesteros-Garcia and Raphaël Proux - 18/12/2017 - very optimised version with new algorithms (ring, symmetric) and new functionnalities (timetrace channel selection, post-selection). Also was put in a package style to import it easily on new machines.
