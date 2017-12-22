@@ -148,8 +148,11 @@ static inline void ParseHHT2_HH2(uint32_t record, int *channel,
 
     T2Rec.allbits = record;
     
+    int ch = T2Rec.bits.channel;
+    int sp = T2Rec.bits.special;
+
     // Negative Channels represent overflows or markers
-    if(T2Rec.bits.channel==0x3F) {  //an overflow record
+    if(ch==0x3F) {  //an overflow record
         // if(T2Rec.bits.timetag!=0) {
                 *oflcorrection += T2WRAPAROUND_V2 * T2Rec.bits.timetag;
             // }
@@ -157,7 +160,7 @@ static inline void ParseHHT2_HH2(uint32_t record, int *channel,
                 // *oflcorrection += T2WRAPAROUND_V2;  //should never happen with new Firmware!
             // }
     }
-    *channel = (!T2Rec.bits.special) * (T2Rec.bits.channel + 1) - T2Rec.bits.special * T2Rec.bits.channel;
+    *channel = ch + 1 - sp*(2*ch + 1);
     *timetag = *oflcorrection + T2Rec.bits.timetag;
 }
 
