@@ -1,4 +1,5 @@
 from setuptools.command.install import install
+from setuptools.command.develop import develop
 
 from cffi import FFI
 from os import remove
@@ -26,8 +27,8 @@ def compile_library():
     prototypes = r"""
         void timetrace(char filepath[], int end_of_header, uint64_t RecNum_start,
                        uint64_t NumRecords, uint64_t time_bin_length,
-                       int time_trace[], uint64_t RecNum_trace[], int nb_of_bins,
-                       int n_threads);
+                       int time_trace[], uint64_t RecNum_trace[], int select_channel,
+                       int nb_of_bins, int n_threads);
         void calculate_g2(char filepath[], int end_of_header,
                           uint64_t *RecNum_start, uint64_t *RecNum_stop,
                           int nb_of_ranges, uint64_t max_time, int histogram[],
@@ -41,8 +42,8 @@ def compile_library():
         ffibuilder = FFI()
         ffibuilder.cdef(prototypes)
         ffibuilder.set_source("readPTU._readTTTRRecords_{}".format(code),
-                              codes_dict[code])
-                              # extra_compile_args=["-O3"])
+                              codes_dict[code],
+                              extra_compile_args=["-O3"])
         print('\nCompiling version {}'.format(code))
         ffibuilder.compile(verbose=True)
         remove('./readPTU/_readTTTRRecords_{}.c'.format(code))
@@ -55,6 +56,13 @@ class Build(install):
     def run(self):
         compile_library()
         install.run(self)
+
+class Build_dev(develop):
+    """Custom handler for the 'install' command."""
+
+    def run(self):
+        compile_library()
+        develop.run(self)
 
 
 setuptools.setup(
@@ -69,5 +77,5 @@ setuptools.setup(
     zip_safe=False,
     setup_requires=["cffi>=1.11.2"],
     install_requires=["cffi>=1.11.2"],
-    cmdclass={'install': Build},
+    cmdclass={'install': Build, 'develop': Build_dev},
     package_data={'': ['*.so', '*.c', '*.o']})

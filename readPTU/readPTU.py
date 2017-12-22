@@ -1,4 +1,5 @@
 from __future__ import print_function
+from __future__ import absolute_import
 
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
@@ -29,10 +30,10 @@ import struct
 import time
 import collections as coll
 
-from _readTTTRRecords_HHT2_HH2 import ffi, lib
-from _readTTTRRecords_HHT2_HH2 import lib as HHT2_HH2_lib
-from _readTTTRRecords_HHT2_HH1 import lib as HHT2_HH1_lib
-from _readTTTRRecords_PHT2 import lib as PHT2_lib
+from ._readTTTRRecords_HHT2_HH2 import ffi, lib
+from ._readTTTRRecords_HHT2_HH2 import lib as HHT2_HH2_lib
+from ._readTTTRRecords_HHT2_HH1 import lib as HHT2_HH1_lib
+from ._readTTTRRecords_PHT2 import lib as PHT2_lib
 
 
 class PTUfile():
@@ -342,7 +343,7 @@ class PTUmeasurement():
 
         return rec_lib
 
-    def timetrace(self, resolution=1, record_range=[0, None], time_range=None, n_threads=2):
+    def timetrace(self, resolution=1, record_range=[0, None], time_range=None, channel=-1, n_threads=2):
         """ 
         resolution is the time bin of the timetrace in seconds,
         record_range[0] is the record number of the position where to start the timetrace, default is 0
@@ -366,7 +367,7 @@ class PTUmeasurement():
         assert(0 <= record_range[0] < record_range[1] <= self.meas.num_records)
 
         if time_range is None:
-            time_range = self.meas.acq_time * self.meas.globres
+            time_range = self.meas.acq_time * 1.e-12  # acq_time is in picoseconds
 
         self.meas.reset_rec_num(at=record_range[0])
 
@@ -382,6 +383,7 @@ class PTUmeasurement():
              resolution,
              c_time_trace,
              c_rec_num_trace,
+             channel,
              nb_of_bins,
              n_threads)
 
@@ -391,9 +393,9 @@ class PTUmeasurement():
 
         return (time_vector, time_trace, rec_num_trace)
 
-    def calculate_g2(self, correlation_window, resolution,
+    def calculate_g2(self, correlation_window, resolution=None,
                      post_selec_ranges=None, channel_start=0, channel_stop=1,
-                     mode='ring', buffer_size=2**7, n_threads=2):
+                     mode='ring', n_threads=2):
         """
         Return the g2 calculated from the file, given the start and stop
         channels and the record number range to analyse.
@@ -422,6 +424,21 @@ class PTUmeasurement():
         """
         g2_f = self._select_record_library().calculate_g2
 
+        # Resolution in globres units, typically picoseconds
+        if mode == 'symmetric':
+            correlation_window /= 2.
+
+        correlation_window = int(float(correlation_window) / self.meas.globres)
+        if resolution is None:
+            nb_of_bins = 1024
+            resolution = int(correlation_window / float(nb_of_bins))
+        else:
+            resolution = int(float(resolution) / self.meas.globres)
+
+        nb_of_bins = int(np.floor(float(correlation_window) / resolution))
+        if mode == 'symmetric':
+            nb_of_bins *= 2
+
         if mode == 'fast':
             mode_idx = 0
         elif mode == 'ring':
@@ -433,16 +450,6 @@ class PTUmeasurement():
         else:
             print('Non-Existent Mode!')
             assert(0)
-
-        # Resolution in globres units, typically picoseconds
-        if mode == 'symmetric':
-            correlation_window /= 2.
-
-        resolution = int(float(resolution) / self.meas.globres)
-        correlation_window = int(float(correlation_window) / self.meas.globres)
-        nb_of_bins = int(np.floor(float(correlation_window) / resolution))
-        if mode == 'symmetric':
-            nb_of_bins *= 2
 
         # Make sure the correlation window is a multiple of the resolution
         correlation_window = nb_of_bins * resolution
@@ -473,6 +480,7 @@ class PTUmeasurement():
             c_post_select_stops[i] = post_selec_ranges[i][1]
 
         filepath = ffi.new("char[]", self.meas.filename.encode('ascii'))
+        buffer_size = 2**4
 
         # Calculate
         g2_f(filepath,                     # file to analyze
@@ -588,7 +596,6 @@ if __name__ == '__main__':
         start_time = time.time()
         hist_x_ring, hist_y_ring = ptu_meas.calculate_g2(g2_window, g2_resolution,
                                                          post_selec_ranges=None,
-                                                         buffer_size=2**6,
                                                          n_threads=4,
                                                          mode='symmetric')
         stop_time = time.time()
@@ -598,7 +605,7 @@ if __name__ == '__main__':
         plt.figure()
         plt.plot(hist_x_ring * 1e9, hist_y_ring)
         plt.xlabel('Delay (ns)')
-        plt.title('G2 measurements (Ring algorithm)')
+        plt.title('G2 measurements')
 
         # start_time = time.time()
         # print('\nclassic ALGORITHM')

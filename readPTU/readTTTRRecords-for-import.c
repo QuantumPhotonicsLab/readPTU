@@ -109,6 +109,7 @@ typedef struct _timetrace_args {
         uint64_t *ptr_recnum;
         uint64_t RecNum_start;
         uint64_t RecNum_stop;
+        int select_channel;
         uint64_t time_bin_length;
         char *filepath;
     } timetrace_args;
@@ -153,10 +154,18 @@ static inline THREAD_FUNC_DEF(timetrace_section) {
     {
         end_of_bin = (i+1) * args->time_bin_length;
         photon_counter = 0;
-        while (timetag < end_of_bin && record_arrived) {
-            record_arrived = next_record(filehandle, &RecNum, args->RecNum_stop,
-                                         &TTTRRecord, &oflcorrection, &timetag, &channel);
-            photon_counter += (channel >= 0);
+        if (args->select_channel < 0) {
+            while (timetag < end_of_bin && record_arrived) {
+                record_arrived = next_record(filehandle, &RecNum, args->RecNum_stop,
+                                             &TTTRRecord, &oflcorrection, &timetag, &channel);
+                photon_counter += (channel >= 0);
+            }
+        } else {
+            while (timetag < end_of_bin && record_arrived) {
+                record_arrived = next_record(filehandle, &RecNum, args->RecNum_stop,
+                                             &TTTRRecord, &oflcorrection, &timetag, &channel);
+                photon_counter += (channel == args->select_channel);
+            }
         }
 
         if (record_arrived) { // the last incomplete bin is discarded
@@ -171,7 +180,7 @@ static inline THREAD_FUNC_DEF(timetrace_section) {
 
 void timetrace(char filepath[], int end_of_header, uint64_t RecNum_start,
                uint64_t NumRecords, uint64_t time_bin_length, int time_trace[],
-               uint64_t RecNum_trace[], int nb_of_bins, int n_threads) 
+               uint64_t RecNum_trace[], int select_channel, int nb_of_bins, int n_threads) 
 {
     int i, j, k; // looping indices
 
@@ -209,6 +218,7 @@ void timetrace(char filepath[], int end_of_header, uint64_t RecNum_start,
         thread_args[i].RecNum_start = (uint64_t)i * records_per_thread + RecNum_start;
         thread_args[i].RecNum_stop = ((uint64_t)i+1) * records_per_thread + RecNum_start;
         thread_args[i].n_bins = nb_of_bins;
+        thread_args[i].select_channel = select_channel;
         thread_args[i].time_bin_length = time_bin_length;
         thread_args[i].filepath = filepath;
     }
@@ -397,6 +407,7 @@ static inline THREAD_FUNC_DEF(g2_symmetric_section) {
     const int channel_stop = args->channel_stop;
     uint64_t correlation_window = args->correlation_window;
     const uint64_t resolution = correlation_window / nb_of_bins;
+    uint64_t oldest_timetag = 0;
 
     int i;  // index for the loop over circular buffer
     uint64_t RecNum;
@@ -422,10 +433,14 @@ static inline THREAD_FUNC_DEF(g2_symmetric_section) {
 
             if (channel == channel_start) {
                 circular_buf_put(&cbuf_1, timetag);
+                circular_buf_oldest(&cbuf_1, &oldest_timetag);
+                if ( (timetag-oldest_timetag) < correlation_window && cbuf_1.count == cbuf_1.size) {
+                    circular_buf_grow(&cbuf_1);
+                }
                 for(i = cbuf_2.head-1; i > (cbuf_2.head-1-cbuf_2.count); i--) {
-                    delta = timetag - cbuf_2.buffer[i];
-                    idx = central_bin - delta / resolution;
-                    if (idx < central_bin) {
+                    delta = timetag - cbuf_2.buffer[(i+2*cbuf_2.count)%cbuf_2.count];
+                    idx = central_bin - delta / resolution - 1;
+                    if (delta < correlation_window && idx<(uint64_t) nb_of_bins) {
                         ptr_hist[idx]++;
                     } else break;
                 }
@@ -434,10 +449,14 @@ static inline THREAD_FUNC_DEF(g2_symmetric_section) {
             
             if (channel == channel_stop) {
                 circular_buf_put(&cbuf_2, timetag);
+                circular_buf_oldest(&cbuf_2, &oldest_timetag);
+                if ( (timetag-oldest_timetag) < correlation_window && cbuf_2.count == cbuf_2.size) {
+                    circular_buf_grow(&cbuf_2);
+                }
                 for(i = cbuf_1.head-1; i > (cbuf_1.head-1-cbuf_1.count); i--) {
-                    delta = timetag - cbuf_1.buffer[i];
+                    delta = timetag - cbuf_1.buffer[(i+2*cbuf_1.count)%cbuf_1.count];
                     idx = central_bin + delta / resolution;
-                    if (idx < nb_of_bins) {
+                    if (delta < correlation_window && idx<(uint64_t) nb_of_bins) {
                         ptr_hist[idx]++;
                     } else break;
                 }
@@ -466,6 +485,7 @@ static inline THREAD_FUNC_DEF(g2_ring_section) {
     uint64_t oflcorrection = 0;
     int channel = -1;
     uint64_t timetag = 0;
+    uint64_t oldest_timetag = 0;
 
     // variables for g2 algo
     uint64_t delta, idx;
@@ -485,6 +505,7 @@ static inline THREAD_FUNC_DEF(g2_ring_section) {
 
     // loop over the postselection ranges assigned to thread
     for (int range_idx = 0; range_idx < args->n_ranges; range_idx++) {
+        circular_buf_reset(&cbuf);
         RecNum = args->RecNum_start[args->first_range + range_idx];
         RecNum_STOP = args->RecNum_stop[args->first_range + range_idx];
         c_fseek(filehandle,
@@ -499,12 +520,16 @@ static inline THREAD_FUNC_DEF(g2_ring_section) {
 
             if (channel == channel_start) {
                 circular_buf_put(&cbuf, timetag);
+                circular_buf_oldest(&cbuf, &oldest_timetag);
+                if ( (timetag-oldest_timetag) < correlation_window && cbuf.count == cbuf.size) {
+                    circular_buf_grow(&cbuf);
+                }
                 continue;
             }
             
-            if (channel == channel_stop) {
+            if (channel == channel_stop && cbuf.count > 0) {
                 for(i = cbuf.head-1; i > (cbuf.head-1-cbuf.count); i--) {
-                    delta = timetag - cbuf.buffer[i];
+                    delta = timetag - cbuf.buffer[(i+2*cbuf.count)%cbuf.count];
                     if (delta < correlation_window) {
                         idx = delta / resolution;
                         ptr_hist[idx]++;
@@ -703,6 +728,7 @@ void calculate_g2(char filepath[], int end_of_header,
             thread_args[i].ptr_hist[j] = 0;
         }
 
+        // thread_args[i].lock = &lock;
         thread_args[i].end_of_header = end_of_header;
         thread_args[i].n_bins = nb_of_bins;
         thread_args[i].correlation_window = max_time;
@@ -757,7 +783,6 @@ void calculate_g2(char filepath[], int end_of_header,
                 printf("%s\n", "NON-EXISTENT G2 MODE");
                 goto free_memory;
         }
-        
     }
 
 #if defined(__linux__ ) || defined(__APPLE__)
@@ -794,7 +819,6 @@ void calculate_g2(char filepath[], int end_of_header,
     free(hThreadArray);
     free(dwThreadIdArray);
 #endif
-    
     free(thread_args);
     return;
 }
