@@ -728,7 +728,6 @@ void calculate_g2(char filepath[], int end_of_header,
             thread_args[i].ptr_hist[j] = 0;
         }
 
-        // thread_args[i].lock = &lock;
         thread_args[i].end_of_header = end_of_header;
         thread_args[i].n_bins = nb_of_bins;
         thread_args[i].correlation_window = max_time;
