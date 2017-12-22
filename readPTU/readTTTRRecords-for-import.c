@@ -33,6 +33,16 @@ int c_fseek(FILE *filehandle, long int offset)
     return fseek(filehandle, offset, SEEK_SET);
 }
 
+static inline void load_buffer(uint32_t *pbuffer, FILE *fhandle)
+{
+    if(fread(pbuffer, RECORD_CHUNK, sizeof(uint32_t), fhandle)==0) {
+        if (ferror(fhandle)){
+            perror("Error detected while reading file.");
+            exit(0);
+        }
+    }
+}
+
 
 static inline bool next_record(FILE* filehandle, uint64_t * RecNum,
                                uint64_t StopRecord, record_buf_t *buffer,
@@ -81,12 +91,7 @@ static inline bool next_record(FILE* filehandle, uint64_t * RecNum,
     }
     // run out of buffer
     buffer->head = 0;
-    if(fread(buffer->records, RECORD_CHUNK, sizeof(uint32_t), filehandle)==0) {
-        if (ferror(filehandle)){
-            perror("Error detected while reading file.");
-            exit(0);
-        }
-    }
+    load_buffer(buffer->records, filehandle);
     goto pop_record;
 }
 
@@ -142,12 +147,7 @@ static inline THREAD_FUNC_DEF(timetrace_section) {
     uint64_t RecNum = args->RecNum_start;
     uint64_t end_of_bin;
 
-    if(fread(TTTRRecord.records, RECORD_CHUNK, sizeof(uint32_t), filehandle)==0) {
-        if (ferror(filehandle)){
-            perror("Error detected while reading file.");
-            exit(0);
-        }
-    }
+    load_buffer(TTTRRecord.records, filehandle);
     int photon_counter=0;
     for (int i = 0; i < args->n_bins; i++)
     {
@@ -340,12 +340,7 @@ static inline THREAD_FUNC_DEF(g2_fast_section) {
 
         // start g2 algo
         // prefill record buffer
-        if(fread(TTTRRecord.records, RECORD_CHUNK, sizeof(uint32_t), filehandle)==0) {
-            if (ferror(filehandle)){
-                perror("Error detected while reading file.");
-                exit(0);
-            }
-        }
+        load_buffer(TTTRRecord.records, filehandle);
         TTTRRecord.head = 0;
         channel = -1;
 
@@ -420,12 +415,7 @@ static inline THREAD_FUNC_DEF(g2_symmetric_section) {
 
         // start g2 algo
         // prefill circular buffer
-        if(fread(TTTRRecord.records, RECORD_CHUNK, sizeof(uint32_t), filehandle)==0) {
-            if (ferror(filehandle)){
-                perror("Error detected while reading file.");
-                exit(0);
-            }
-        }
+        load_buffer(TTTRRecord.records, filehandle);
         TTTRRecord.head = 0;
         while(next_record(filehandle, &RecNum, RecNum_STOP, &TTTRRecord,
                           &oflcorrection, &timetag, &channel)) {
@@ -502,12 +492,7 @@ static inline THREAD_FUNC_DEF(g2_ring_section) {
 
         // start g2 algo
         // prefill circular buffer
-        if(fread(TTTRRecord.records, RECORD_CHUNK, sizeof(uint32_t), filehandle)==0) {
-            if (ferror(filehandle)){
-                perror("Error detected while reading file.");
-                exit(0);
-            }
-        }
+        load_buffer(TTTRRecord.records, filehandle);
         TTTRRecord.head = 0;
         while(next_record(filehandle, &RecNum, RecNum_STOP, &TTTRRecord,
                           &oflcorrection, &timetag, &channel)) {
@@ -592,12 +577,7 @@ static inline THREAD_FUNC_DEF(g2_classic_section) {
         
         // while there are still unread photons in the file or unused start photons in the buffer
         // prefill the TTTRRecord struct
-        if(fread(TTTRRecord.records, RECORD_CHUNK, sizeof(uint32_t), filehandle)==0) {
-            if (ferror(filehandle)){
-                perror("Error detected while reading file.");
-                exit(0);
-            }
-        }
+        load_buffer(TTTRRecord.records, filehandle);
         while(record_arrived || start_buff_length > 0){            
             // FIND NEXT START PHOTON
             // first, take first start photon in buffer
