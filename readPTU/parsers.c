@@ -107,13 +107,14 @@ static inline void ParseHHT2_HH1(uint32_t record, int * channel,
     
     T2Rec.allbits = record;
     
+    unsigned ch = T2Rec.bits.channel;
+    unsigned sp = T2Rec.bits.special;
+    unsigned tm = T2Rec.bits.timetag;
 
     // Negative Channels represent overflows or markers
-    if(T2Rec.bits.channel==0x3F) {  //an overflow record
-        *oflcorrection += T2WRAPAROUND_V1;
-    }
-    *channel = (!T2Rec.bits.special) * (T2Rec.bits.channel + 1) - T2Rec.bits.special * T2Rec.bits.channel;
-    *timetag = *oflcorrection + T2Rec.bits.timetag;
+    *oflcorrection += T2WRAPAROUND_V1 * (ch==0x3F);
+    *channel = (!sp) * (ch + 1) - sp * ch;
+    *timetag = *oflcorrection + tm;
 }
 
 static inline void ParseHHT2_HH2(uint32_t record, int *channel,
