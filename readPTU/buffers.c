@@ -31,7 +31,7 @@ typedef struct {
 
 void ring_buf_reset(ring_buf_t * cbuf);
 static inline void ring_buf_put(ring_buf_t * cbuf, uint64_t data);
-static inline void ring_buf_oldest(ring_buf_t * cbuf, uint64_t * data);
+static inline uint64_t ring_buf_oldest(ring_buf_t * cbuf);
 
 ring_buf_t ring_buf_allocate(int size) {
     ring_buf_t cbuf;
@@ -63,19 +63,16 @@ static inline void ring_buf_put(ring_buf_t * cbuf, uint64_t data)
     }
 }
 
-static inline void ring_buf_oldest(ring_buf_t * cbuf, uint64_t * data) {
+static inline uint64_t ring_buf_oldest(ring_buf_t * cbuf) {
     // CAUTION: Even if the buffer is empty oldest will return whatever
     // is in buffer[0]. We do so because it is conveninet for our specific
     // application but it can be catastrophic.
     // TAKE HOME MESSAGE: Don't use this implementation as is for anything
     // other than computing g2.
-    if(cbuf && data) {
-        if(cbuf->count < cbuf->size) {
-            *data = cbuf->buffer[0];
-        } else {
-            *data = cbuf->buffer[cbuf->head];
-        }
+    if(cbuf->count < cbuf->size) {
+        return cbuf->buffer[0];
     }
+    return cbuf->buffer[cbuf->head];
 }
 
 static inline void ring_buf_grow(ring_buf_t *cbuf) {

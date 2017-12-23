@@ -43,6 +43,13 @@ static inline void load_buffer(uint32_t *pbuffer, FILE *fhandle)
     }
 }
 
+static inline void check_and_grow_buf(ring_buf_t cbuf, uint64_t timetag,
+                                      uint64_t correlation_window) {
+    if ( (timetag-ring_buf_oldest(&cbuf)) < correlation_window && cbuf.count == cbuf.size) {
+        ring_buf_grow(&cbuf);
+    }
+}
+
 
 static inline bool next_record(FILE* filehandle, uint64_t * RecNum,
                                uint64_t StopRecord, record_buf_t *buffer,
@@ -401,13 +408,12 @@ static inline THREAD_FUNC_DEF(g2_symmetric_section) {
     // variables for g2 algo
     uint64_t delta, idx;
     int *ptr_hist = args->ptr_hist;
-    const int nb_of_bins = args->n_bins;
+    const uint64_t nb_of_bins = args->n_bins;
     const uint64_t central_bin = nb_of_bins/2;
     const int channel_start = args->channel_start;
     const int channel_stop = args->channel_stop;
     uint64_t correlation_window = args->correlation_window;
     const uint64_t resolution = correlation_window / nb_of_bins;
-    uint64_t oldest_timetag = 0;
 
     int i;  // index for the loop over ring buffer
     uint64_t RecNum;
@@ -433,14 +439,11 @@ static inline THREAD_FUNC_DEF(g2_symmetric_section) {
 
             if (channel == channel_start) {
                 ring_buf_put(&cbuf_1, timetag);
-                ring_buf_oldest(&cbuf_1, &oldest_timetag);
-                if ( (timetag-oldest_timetag) < correlation_window && cbuf_1.count == cbuf_1.size) {
-                    ring_buf_grow(&cbuf_1);
-                }
+                check_and_grow_buf(cbuf_1, timetag, correlation_window);
                 for(i = cbuf_2.head-1; i > (cbuf_2.head-1-cbuf_2.count); i--) {
                     delta = timetag - cbuf_2.buffer[(i+2*cbuf_2.count)%cbuf_2.count];
                     idx = central_bin - delta / resolution - 1;
-                    if (delta < correlation_window && idx<(uint64_t) nb_of_bins) {
+                    if (delta < correlation_window && idx < nb_of_bins) {
                         ptr_hist[idx]++;
                     } else break;
                 }
@@ -449,14 +452,11 @@ static inline THREAD_FUNC_DEF(g2_symmetric_section) {
             
             if (channel == channel_stop) {
                 ring_buf_put(&cbuf_2, timetag);
-                ring_buf_oldest(&cbuf_2, &oldest_timetag);
-                if ( (timetag-oldest_timetag) < correlation_window && cbuf_2.count == cbuf_2.size) {
-                    ring_buf_grow(&cbuf_2);
-                }
+                check_and_grow_buf(cbuf_2, timetag, correlation_window);
                 for(i = cbuf_1.head-1; i > (cbuf_1.head-1-cbuf_1.count); i--) {
                     delta = timetag - cbuf_1.buffer[(i+2*cbuf_1.count)%cbuf_1.count];
                     idx = central_bin + delta / resolution;
-                    if (delta < correlation_window && idx<(uint64_t) nb_of_bins) {
+                    if (delta < correlation_window && idx < nb_of_bins) {
                         ptr_hist[idx]++;
                     } else break;
                 }
@@ -485,7 +485,6 @@ static inline THREAD_FUNC_DEF(g2_ring_section) {
     uint64_t oflcorrection = 0;
     int channel = -1;
     uint64_t timetag = 0;
-    uint64_t oldest_timetag = 0;
 
     // variables for g2 algo
     uint64_t delta, idx;
@@ -520,10 +519,7 @@ static inline THREAD_FUNC_DEF(g2_ring_section) {
 
             if (channel == channel_start) {
                 ring_buf_put(&cbuf, timetag);
-                ring_buf_oldest(&cbuf, &oldest_timetag);
-                if ( (timetag-oldest_timetag) < correlation_window && cbuf.count == cbuf.size) {
-                    ring_buf_grow(&cbuf);
-                }
+                check_and_grow_buf(cbuf, timetag, correlation_window);
                 continue;
             }
             
