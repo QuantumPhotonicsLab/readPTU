@@ -19,30 +19,30 @@ void record_buf_reset(record_buf_t *buffer) {
 // ================================================
 
 // ====================================================================
-// CIRCULAR BUFFER Structure for use with the g2 algorithm based on it
+// ring BUFFER Structure for use with the g2 algorithm based on it
 // ====================================================================
 typedef struct {
     uint64_t *buffer;
     int head;
     int count;
     int size; //of the buffer
-} circular_buf_t;
+} ring_buf_t;
 
 
-void circular_buf_reset(circular_buf_t * cbuf);
-static inline void circular_buf_put(circular_buf_t * cbuf, uint64_t data);
-static inline void circular_buf_oldest(circular_buf_t * cbuf, uint64_t * data);
+void ring_buf_reset(ring_buf_t * cbuf);
+static inline void ring_buf_put(ring_buf_t * cbuf, uint64_t data);
+static inline void ring_buf_oldest(ring_buf_t * cbuf, uint64_t * data);
 
-circular_buf_t circular_buf_allocate(int size) {
-    circular_buf_t cbuf;
+ring_buf_t ring_buf_allocate(int size) {
+    ring_buf_t cbuf;
     cbuf.size = size;
     cbuf.buffer = malloc(cbuf.size * sizeof(uint64_t)); // set memory to zero so we have a proper
-    circular_buf_reset(&cbuf);
+    ring_buf_reset(&cbuf);
 
     return cbuf;
 }
 
-void circular_buf_reset(circular_buf_t * cbuf)
+void ring_buf_reset(ring_buf_t * cbuf)
 {
     if(cbuf) {
         cbuf->head = 0;
@@ -54,7 +54,7 @@ void circular_buf_reset(circular_buf_t * cbuf)
     }
 }
 
-static inline void circular_buf_put(circular_buf_t * cbuf, uint64_t data)
+static inline void ring_buf_put(ring_buf_t * cbuf, uint64_t data)
 {
     cbuf->buffer[cbuf->head] = data;
     cbuf->head = (cbuf->head + 1) % cbuf->size;
@@ -63,7 +63,7 @@ static inline void circular_buf_put(circular_buf_t * cbuf, uint64_t data)
     }
 }
 
-static inline void circular_buf_oldest(circular_buf_t * cbuf, uint64_t * data) {
+static inline void ring_buf_oldest(ring_buf_t * cbuf, uint64_t * data) {
     // CAUTION: Even if the buffer is empty oldest will return whatever
     // is in buffer[0]. We do so because it is conveninet for our specific
     // application but it can be catastrophic.
@@ -78,7 +78,7 @@ static inline void circular_buf_oldest(circular_buf_t * cbuf, uint64_t * data) {
     }
 }
 
-static inline void circular_buf_grow(circular_buf_t *cbuf) {
+static inline void ring_buf_grow(ring_buf_t *cbuf) {
     cbuf->size = 2*cbuf->size;  // double the space as previous array
     cbuf->buffer = realloc(cbuf->buffer, cbuf->size * sizeof(uint64_t));
     // set memory to zero so we have a proper
@@ -89,7 +89,7 @@ static inline void circular_buf_grow(circular_buf_t *cbuf) {
 }
 
 // ============================
-// END OF CIRCULAR BUFFER
+// END OF ring BUFFER
 // ============================
 
 // ====================================================================

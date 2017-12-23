@@ -409,13 +409,13 @@ static inline THREAD_FUNC_DEF(g2_symmetric_section) {
     const uint64_t resolution = correlation_window / nb_of_bins;
     uint64_t oldest_timetag = 0;
 
-    int i;  // index for the loop over circular buffer
+    int i;  // index for the loop over ring buffer
     uint64_t RecNum;
     uint64_t RecNum_STOP;
 
-    // Prepare the circular buffer for the start photons
-    circular_buf_t cbuf_2 = circular_buf_allocate((int)args->buffer_size);
-    circular_buf_t cbuf_1 = circular_buf_allocate((int)args->buffer_size);
+    // Prepare the ring buffer for the start photons
+    ring_buf_t cbuf_2 = ring_buf_allocate((int)args->buffer_size);
+    ring_buf_t cbuf_1 = ring_buf_allocate((int)args->buffer_size);
 
     // loop over the postselection ranges assigned to thread
     for (int range_idx = 0; range_idx < args->n_ranges; range_idx++) {
@@ -425,17 +425,17 @@ static inline THREAD_FUNC_DEF(g2_symmetric_section) {
             (long int)(args->end_of_header + (4 * RecNum) ));
 
         // start g2 algo
-        // prefill circular buffer
+        // prefill ring buffer
         load_buffer(TTTRRecord.records, filehandle);
         TTTRRecord.head = 0;
         while(next_record(filehandle, &RecNum, RecNum_STOP, &TTTRRecord,
                           &oflcorrection, &timetag, &channel)) {
 
             if (channel == channel_start) {
-                circular_buf_put(&cbuf_1, timetag);
-                circular_buf_oldest(&cbuf_1, &oldest_timetag);
+                ring_buf_put(&cbuf_1, timetag);
+                ring_buf_oldest(&cbuf_1, &oldest_timetag);
                 if ( (timetag-oldest_timetag) < correlation_window && cbuf_1.count == cbuf_1.size) {
-                    circular_buf_grow(&cbuf_1);
+                    ring_buf_grow(&cbuf_1);
                 }
                 for(i = cbuf_2.head-1; i > (cbuf_2.head-1-cbuf_2.count); i--) {
                     delta = timetag - cbuf_2.buffer[(i+2*cbuf_2.count)%cbuf_2.count];
@@ -448,10 +448,10 @@ static inline THREAD_FUNC_DEF(g2_symmetric_section) {
             }
             
             if (channel == channel_stop) {
-                circular_buf_put(&cbuf_2, timetag);
-                circular_buf_oldest(&cbuf_2, &oldest_timetag);
+                ring_buf_put(&cbuf_2, timetag);
+                ring_buf_oldest(&cbuf_2, &oldest_timetag);
                 if ( (timetag-oldest_timetag) < correlation_window && cbuf_2.count == cbuf_2.size) {
-                    circular_buf_grow(&cbuf_2);
+                    ring_buf_grow(&cbuf_2);
                 }
                 for(i = cbuf_1.head-1; i > (cbuf_1.head-1-cbuf_1.count); i--) {
                     delta = timetag - cbuf_1.buffer[(i+2*cbuf_1.count)%cbuf_1.count];
@@ -496,40 +496,40 @@ static inline THREAD_FUNC_DEF(g2_ring_section) {
     uint64_t correlation_window = args->correlation_window;
     const uint64_t resolution = correlation_window / nb_of_bins;
 
-    int i;  // index for the loop over circular buffer
+    int i;  // index for the loop over ring buffer
     uint64_t RecNum;
     uint64_t RecNum_STOP;
 
-    // Prepare the circular buffer for the start photons
-    circular_buf_t cbuf = circular_buf_allocate((int)args->buffer_size);
+    // Prepare the ring buffer for the start photons
+    ring_buf_t cbuf = ring_buf_allocate((int)args->buffer_size);
 
     // loop over the postselection ranges assigned to thread
     for (int range_idx = 0; range_idx < args->n_ranges; range_idx++) {
-        circular_buf_reset(&cbuf);
+        ring_buf_reset(&cbuf);
         RecNum = args->RecNum_start[args->first_range + range_idx];
         RecNum_STOP = args->RecNum_stop[args->first_range + range_idx];
         c_fseek(filehandle,
             (long int)(args->end_of_header + (4 * RecNum) ));
 
         // start g2 algo
-        // prefill circular buffer
+        // prefill ring buffer
         load_buffer(TTTRRecord.records, filehandle);
         TTTRRecord.head = 0;
         while(next_record(filehandle, &RecNum, RecNum_STOP, &TTTRRecord,
                           &oflcorrection, &timetag, &channel)) {
 
             if (channel == channel_start) {
-                circular_buf_put(&cbuf, timetag);
-                circular_buf_oldest(&cbuf, &oldest_timetag);
+                ring_buf_put(&cbuf, timetag);
+                ring_buf_oldest(&cbuf, &oldest_timetag);
                 if ( (timetag-oldest_timetag) < correlation_window && cbuf.count == cbuf.size) {
-                    circular_buf_grow(&cbuf);
+                    ring_buf_grow(&cbuf);
                 }
                 continue;
             }
             
             if (channel == channel_stop && cbuf.count > 0) {
                 for(i = cbuf.head-1; i > (cbuf.head-1-cbuf.count); i--) {
-                    delta = timetag - cbuf.buffer[(i+2*cbuf.count)%cbuf.count];
+                    delta = timetag - cbuf.buffer[(i+cbuf.count)%cbuf.count];
                     if (delta < correlation_window) {
                         idx = delta / resolution;
                         ptr_hist[idx]++;
