@@ -590,8 +590,6 @@ if __name__ == '__main__':
         plt.ylabel('Record number')
         plt.title('Record number vs measurement time')
 
-        ranges = [[0, 100000], [100001, 200000], [200001, 300000],
-                  [300001, 400000], [400001, 500000]]
 
         start_time = time.time()
         hist_x_ring, hist_y_ring = ptu_meas.calculate_g2(g2_window, g2_resolution,
