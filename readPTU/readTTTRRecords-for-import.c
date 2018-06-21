@@ -27,6 +27,7 @@
 
 // How big the file chunking will be
 #define RECORD_CHUNK 1024*8 // 1024*8 gives the best results on Guillem laptop
+#define MAX_RING_BUF 4096
 
 int c_fseek(FILE *filehandle, long int offset)
 {
@@ -43,10 +44,10 @@ static inline void load_buffer(uint32_t *pbuffer, FILE *fhandle)
     }
 }
 
-static inline void check_and_grow_buf(ring_buf_t cbuf, uint64_t timetag,
+static inline void check_and_grow_buf(ring_buf_t *cbuf, uint64_t timetag,
                                       uint64_t correlation_window) {
-    if ( (timetag-ring_buf_oldest(&cbuf)) < correlation_window && cbuf.count == cbuf.size) {
-        ring_buf_grow(&cbuf);
+    if ( (timetag-ring_buf_oldest(cbuf)) < correlation_window && cbuf->count == cbuf->size && cbuf->size < MAX_RING_BUF) {
+        ring_buf_grow(cbuf);
     }
 }
 
@@ -91,7 +92,7 @@ static inline bool next_record(FILE* filehandle, uint64_t * RecNum,
         Parse##parser##(buffer->records[buffer->head], channel, timetag, oflcorrection);
         buffer->head++;
         (*RecNum)++;
-        
+
         return true;
     } else if (*RecNum >= StopRecord) { // run out of records
           return false;
@@ -187,7 +188,7 @@ static inline THREAD_FUNC_DEF(timetrace_section) {
 
 void timetrace(char filepath[], int end_of_header, uint64_t RecNum_start,
                uint64_t NumRecords, uint64_t time_bin_length, int time_trace[],
-               uint64_t RecNum_trace[], int select_channel, int nb_of_bins, int n_threads) 
+               uint64_t RecNum_trace[], int select_channel, int nb_of_bins, int n_threads)
 {
     int i, j, k; // looping indices
 
@@ -209,7 +210,7 @@ void timetrace(char filepath[], int end_of_header, uint64_t RecNum_start,
     // Fill in the arguments for the different threads
     timetrace_args *thread_args;
     thread_args = (timetrace_args*) malloc(n_threads * sizeof(timetrace_args));
-    
+
     for (i = 0; i < n_threads; ++i) {
         thread_args[i].ptr_trace = (int*) malloc(nb_of_bins * sizeof(int));
         thread_args[i].ptr_recnum = (uint64_t*) malloc(nb_of_bins * sizeof(uint64_t));
@@ -230,7 +231,7 @@ void timetrace(char filepath[], int end_of_header, uint64_t RecNum_start,
         thread_args[i].filepath = filepath;
     }
 
-    for (i = 0; i < n_threads; ++i) { 
+    for (i = 0; i < n_threads; ++i) {
         CREATE_THREAD(timetrace_section);
     }
 
@@ -332,11 +333,11 @@ static inline THREAD_FUNC_DEF(g2_fast_section) {
     uint64_t start_time;
     uint64_t stop_time;
     int channel = -1;
-    
+
     // variables for g2 algo
     const int channel_start = args->channel_start;
     const int channel_stop = args->channel_stop;
-    
+
     uint64_t i = 0;
     uint64_t delta=0;
     uint64_t correlation_window = args->correlation_window;
@@ -375,7 +376,7 @@ static inline THREAD_FUNC_DEF(g2_fast_section) {
                                              &TTTRRecord, &oflcorrection, &stop_time, &channel);
             }
             // found stop photon
-            
+
             // ADD DELAY TO HISTOGRAM
             delta = stop_time - start_time;
             if (delta < correlation_window && record_arrived) {
@@ -439,7 +440,7 @@ static inline THREAD_FUNC_DEF(g2_symmetric_section) {
 
             if (channel == channel_start) {
                 ring_buf_put(&cbuf_1, timetag);
-                check_and_grow_buf(cbuf_1, timetag, correlation_window);
+                check_and_grow_buf(&cbuf_1, timetag, correlation_window);
                 for(i = cbuf_2.head-1; i > (cbuf_2.head-1-cbuf_2.count); i--) {
                     delta = timetag - cbuf_2.buffer[(i+2*cbuf_2.count)%cbuf_2.count];
                     idx = central_bin - delta / resolution - 1;
@@ -449,10 +450,10 @@ static inline THREAD_FUNC_DEF(g2_symmetric_section) {
                 }
                 continue;
             }
-            
+
             if (channel == channel_stop) {
                 ring_buf_put(&cbuf_2, timetag);
-                check_and_grow_buf(cbuf_2, timetag, correlation_window);
+                check_and_grow_buf(&cbuf_2, timetag, correlation_window);
                 for(i = cbuf_1.head-1; i > (cbuf_1.head-1-cbuf_1.count); i--) {
                     delta = timetag - cbuf_1.buffer[(i+2*cbuf_1.count)%cbuf_1.count];
                     idx = central_bin + delta / resolution;
@@ -519,10 +520,10 @@ static inline THREAD_FUNC_DEF(g2_ring_section) {
 
             if (channel == channel_start) {
                 ring_buf_put(&cbuf, timetag);
-                check_and_grow_buf(cbuf, timetag, correlation_window);
+                check_and_grow_buf(&cbuf, timetag, correlation_window);
                 continue;
             }
-            
+
             if (channel == channel_stop && cbuf.count > 0) {
                 for(i = cbuf.head-1; i > (cbuf.head-1-cbuf.count); i--) {
                     delta = timetag - cbuf.buffer[(i+cbuf.count)%cbuf.count];
@@ -549,7 +550,7 @@ static inline THREAD_FUNC_DEF(g2_classic_section) {
     record_buf_t TTTRRecord;
     TTTRRecord.records = args->buffer;
     record_buf_reset(&TTTRRecord);
-    
+
     node_t* start_buff_head = NULL;
     node_t* stop_buff_head = NULL;
     int start_buff_length = 0;
@@ -570,7 +571,7 @@ static inline THREAD_FUNC_DEF(g2_classic_section) {
     uint64_t RecNum, RecNum_STOP;
     const int nb_of_bins = args->n_bins;
     bool record_arrived;
-    
+
     for (int range_idx = 0; range_idx < args->n_ranges; range_idx++) {
         // reset file reader and go to the start position RecNum_start
         record_arrived=1;
@@ -583,7 +584,7 @@ static inline THREAD_FUNC_DEF(g2_classic_section) {
         head_init(&start_buff_head, &start_buff_length);
         head_init(&stop_buff_head, &stop_buff_length);
         head_init(&stop_corr_buff_head, &stop_corr_buff_length);
-        
+
         /*
          This algorithm implies using 3 buffers:
          start_buff_head      : the start photons buffer, where all unused start photons go (to be used later)
@@ -592,14 +593,14 @@ static inline THREAD_FUNC_DEF(g2_classic_section) {
          in a correlation window around the selected start photon. For each new start photon,
          it needs to be modified removing the old photons which do not fit anymore in the correlation
          window and adding the new ones which now fit in the correlation window.
-         
+
          Note that this algorithm supposes the list of photons to be ordered chronologically.
          */
-        
+
         // while there are still unread photons in the file or unused start photons in the buffer
         // prefill the TTTRRecord struct
         load_buffer(TTTRRecord.records, filehandle);
-        while(record_arrived || start_buff_length > 0){            
+        while(record_arrived || start_buff_length > 0){
             // FIND NEXT START PHOTON
             // first, take first start photon in buffer
             if(start_buff_length > 0){
@@ -730,7 +731,7 @@ void calculate_g2(char filepath[], int end_of_header,
 
         thread_args[i].buffer = (uint32_t*) malloc(RECORD_CHUNK * sizeof(uint32_t));
         thread_args[i].buffer_size = buffer_size;
-        
+
         thread_args[i].RecNum_start = RecNum_start;
         thread_args[i].RecNum_stop = RecNum_stop;
 
@@ -755,7 +756,7 @@ void calculate_g2(char filepath[], int end_of_header,
         printf("Thread:%d\n", i );
         for(int j = 0; j < thread_args[i].n_ranges; j++) {
             printf("[%llu, %llu]\n", thread_args[i].RecNum_start[thread_args[i].first_range + j],
-                                      thread_args[i].RecNum_stop[thread_args[i].first_range + j]);    
+                                      thread_args[i].RecNum_stop[thread_args[i].first_range + j]);
         }
     }
 
