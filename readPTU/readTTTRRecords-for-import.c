@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -27,6 +26,7 @@
 
 // How big the file chunking will be
 #define RECORD_CHUNK 1024*8 // 1024*8 gives the best results on Guillem laptop
+#define MAX_RING_BUF 4096
 
 int c_fseek(FILE *filehandle, long int offset)
 {
@@ -43,10 +43,10 @@ static inline void load_buffer(uint32_t *pbuffer, FILE *fhandle)
     }
 }
 
-static inline void check_and_grow_buf(ring_buf_t cbuf, uint64_t timetag,
+static inline void check_and_grow_buf(ring_buf_t *cbuf, uint64_t timetag,
                                       uint64_t correlation_window) {
-    if ( (timetag-ring_buf_oldest(&cbuf)) < correlation_window && cbuf.count == cbuf.size) {
-        ring_buf_grow(&cbuf);
+    if ( (timetag-ring_buf_oldest(cbuf)) < correlation_window && cbuf->count == cbuf->size && cbuf->size < MAX_RING_BUF) {
+        ring_buf_grow(cbuf);
     }
 }
 
@@ -67,7 +67,6 @@ static inline bool next_record(FILE* filehandle, uint64_t * RecNum,
      timetag            pointer to an unsigned integer 64 bits. Timetag of the
                         next photon (see outputs for details).
      channel            pointer to an integer. Channel of the next photon (see outputs for details).
-
      Outputs:
      filehandle         FILE pointer with reader at the position of last analysed record
      RecNum             index of last analysed record
@@ -123,7 +122,6 @@ typedef struct _timetrace_args {
 
 static inline THREAD_FUNC_DEF(timetrace_section) {
     /*Return an intensity time trace from a thread.
-
     Arguments:
     end_of_header:    Position of the end the file header in bytes
     n_bins:           Number of bins in a time trace
@@ -439,7 +437,7 @@ static inline THREAD_FUNC_DEF(g2_symmetric_section) {
 
             if (channel == channel_start) {
                 ring_buf_put(&cbuf_1, timetag);
-                check_and_grow_buf(cbuf_1, timetag, correlation_window);
+                check_and_grow_buf(&cbuf_1, timetag, correlation_window);
                 for(i = cbuf_2.head-1; i > (cbuf_2.head-1-cbuf_2.count); i--) {
                     delta = timetag - cbuf_2.buffer[(i+2*cbuf_2.count)%cbuf_2.count];
                     idx = central_bin - delta / resolution - 1;
@@ -452,7 +450,7 @@ static inline THREAD_FUNC_DEF(g2_symmetric_section) {
             
             if (channel == channel_stop) {
                 ring_buf_put(&cbuf_2, timetag);
-                check_and_grow_buf(cbuf_2, timetag, correlation_window);
+                check_and_grow_buf(&cbuf_2, timetag, correlation_window);
                 for(i = cbuf_1.head-1; i > (cbuf_1.head-1-cbuf_1.count); i--) {
                     delta = timetag - cbuf_1.buffer[(i+2*cbuf_1.count)%cbuf_1.count];
                     idx = central_bin + delta / resolution;
@@ -519,7 +517,7 @@ static inline THREAD_FUNC_DEF(g2_ring_section) {
 
             if (channel == channel_start) {
                 ring_buf_put(&cbuf, timetag);
-                check_and_grow_buf(cbuf, timetag, correlation_window);
+                check_and_grow_buf(&cbuf, timetag, correlation_window);
                 continue;
             }
             

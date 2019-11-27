@@ -1,3 +1,5 @@
+#include <stdio.h>
+
 #ifndef BUFFERS_C_
 #define BUFFERS_C_
 
@@ -76,13 +78,16 @@ static inline uint64_t ring_buf_oldest(ring_buf_t * cbuf) {
 }
 
 static inline void ring_buf_grow(ring_buf_t *cbuf) {
-    cbuf->size = 2*cbuf->size;  // double the space as previous array
-    cbuf->buffer = realloc(cbuf->buffer, cbuf->size * sizeof(uint64_t));
-    // set memory to zero so we have a proper
-    for (int i = (cbuf->size)/2; i < cbuf->size; ++i)
-    {
-        cbuf->buffer[i]=0;
-    }
+//    if (cbuf->size < 2048*2048*2048)
+//    {   
+        cbuf->size = 2*cbuf->size;  // double the space as previous array
+        cbuf->buffer = realloc(cbuf->buffer, cbuf->size * sizeof(uint64_t));
+        // set memory to zero so we have a proper
+        for (int i = (cbuf->size)/2; i < cbuf->size; ++i)
+        {
+            cbuf->buffer[i]=0;
+        }
+//    }
 }
 
 // ============================
