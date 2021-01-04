@@ -35,6 +35,10 @@ from _readTTTRRecords_HHT2_HH2 import lib as HHT2_HH2_lib
 from _readTTTRRecords_HHT2_HH1 import lib as HHT2_HH1_lib
 from _readTTTRRecords_PHT2 import lib as PHT2_lib
 
+def find_nearest(array, value):
+    array = np.asarray(array)
+    idx = (np.abs(array - value)).argmin()
+    return idx,array[idx]
 
 class PTUfile():
     """
@@ -562,6 +566,8 @@ if __name__ == '__main__':
     timetrace_resolution = 10    # in seconds
     g2_resolution = 600 * 1e-12  # picoseconds * 1e-12 to change to seconds
     g2_window = 50000 * 1e-12   # picoseconds * 1e-12 to change to seconds
+    threshold = 0 # in unit of counts per unit timetrace resolution
+    constraint_above = True # post-selection counts > threshold for the given timetrace resolution
 
     filename = r'/Users/garfield/Downloads/test_big.ptu'
 
@@ -590,10 +596,19 @@ if __name__ == '__main__':
         plt.ylabel('Record number')
         plt.title('Record number vs measurement time')
 
+        # to post-selection photon counts  > (or <) threshold
+        post_selec_ranges, recnum_post_selec_ranges = construct_postselect_vector(timetrace_y,timetrace_recnum,threshold,constraint_above)
+
+        # to post-select counts within a certain time (say from time 0 to 10 s)
+        # recnum_post_selec_ranges = [[0, timetrace_recnum[find_nearest(timetrace_x,10)[0]]]]
+
+
+        if (len(recnum_post_selec_ranges))==1:
+            recnum_post_selec_ranges = None
 
         start_time = time.time()
         hist_x_ring, hist_y_ring = ptu_meas.calculate_g2(g2_window, g2_resolution,
-                                                         post_selec_ranges=None,
+                                                         post_selec_ranges=recnum_post_selec_ranges,
                                                          n_threads=4,
                                                          mode='symmetric')
         stop_time = time.time()
