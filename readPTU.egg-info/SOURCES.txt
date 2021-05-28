@@ -1,12 +1,9 @@
 README.md
 setup.py
 readPTU/__init__.py
-readPTU/_readTTTRRecords_HHT2_HH1.o
-readPTU/_readTTTRRecords_HHT2_HH1.so
-readPTU/_readTTTRRecords_HHT2_HH2.o
-readPTU/_readTTTRRecords_HHT2_HH2.so
-readPTU/_readTTTRRecords_PHT2.o
-readPTU/_readTTTRRecords_PHT2.so
+readPTU/_readTTTRRecords_HHT2_HH1.cp39-win_amd64.pyd
+readPTU/_readTTTRRecords_HHT2_HH2.cp39-win_amd64.pyd
+readPTU/_readTTTRRecords_PHT2.cp39-win_amd64.pyd
 readPTU/buffers.c
 readPTU/parsers.c
 readPTU/readPTU.py
