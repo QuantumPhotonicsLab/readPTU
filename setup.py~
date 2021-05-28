@@ -78,4 +78,4 @@ setuptools.setup(
     setup_requires=["cffi>=1.11.2"],
     install_requires=["cffi>=1.11.2"],
     cmdclass={'install': Build, 'develop': Build_dev},
-    package_data={'': ['*.so', '*.c', '*.o', '*.pyd']}) # Note that we also have to include .pyd files for binaries to be copied over on windows
+    package_data={'': ['*.so', '*.c', '*.o', '*.pyd']})
