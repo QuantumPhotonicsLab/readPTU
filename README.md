@@ -6,8 +6,24 @@ For now the library handles Hydraharp V2 and Picoharp files in T2 mode only — 
 
 ## Installation
 
-To install this package, you need to have a compiler present on your system (`gcc`on Linux, `clang` on macOS or `vc` on Windows). you can run the `setup.py` file using 
-The package should compile the libraries when installed
+To install this package, you need to have a compiler present on your system (`gcc`on Linux, `clang` on macOS or `vc` on Windows). Explicitly, for Windows, this looks like (since it isn't as straightforward as using a package manager):
+
+1. Go to the [Visual Studio downloads page](https://visualstudio.microsoft.com/downloads)
+
+2. Scroll to the bottom and expand the "Tools for Visual Studio 20XX" tab
+
+3. Download "Build Tools for Visual Studio 20XX"
+
+4. Install the "Desktop development with C++" package
+	- This should include the 3 core libraries ("C++ Build Tools core features", "C++ 20XX Redistributable Update", "C++ core desktop features") as well as "MSVC build tools", "Windows 10 SDK", and "C++ CMake tools".
+
+5. Restart if required
+
+You can run the `setup.py` file using:
+```
+python setup.py install
+```
+The package should compile the libraries when installed (creates `.pyd` files on windows, `.so` files on linux, haven't tested on mac), and copy them over to the proper install location.
 
 ## Use example
 To start, you should import the readPTU library you should open the PTU file using a PTUfile() object. Constructing a PTUfile() object automatically opens the file and leaves it open for further analysis. As a first step, you can then print the header which will bring useful information on the measurement, like measurement time, number of records, record format type, etc.
