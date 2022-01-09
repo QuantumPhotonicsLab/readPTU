@@ -19,10 +19,15 @@ To install this package, you need to have a compiler present on your system (`gc
 
 5. Restart if required
 
-You can run the `setup.py` file using:
+You can install this package using pip:
+```bash
+pip install .
 ```
-python setup.py install
+or using the following if you want to install it in [editable mode](https://pip.pypa.io/en/stable/cli/pip_install/#editable-installs), meaning that if you update the code, the installed package will be updated as well:
+```bash
+pip install -e .
 ```
+
 The package should compile the libraries when installed (creates `.pyd` files on windows, `.so` files on linux, haven't tested on mac), and copy them over to the proper install location.
 
 ## Use example
