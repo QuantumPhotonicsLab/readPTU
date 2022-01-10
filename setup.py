@@ -1,7 +1,5 @@
-from setuptools.command.install import install
-from setuptools.command.develop import develop
+from distutils.command.build import build
 
-from cffi import FFI
 from os import remove
 import setuptools  # necessary magic import for windows -- don't think, just accept it!
 
@@ -39,6 +37,7 @@ def compile_library():
         int c_fseek(FILE *, long int);"""
 
     for code in codes_dict:
+        from cffi import FFI
         ffibuilder = FFI()
         ffibuilder.cdef(prototypes)
         ffibuilder.set_source("readPTU._readTTTRRecords_{}".format(code),
@@ -47,23 +46,12 @@ def compile_library():
         print('\nCompiling version {}'.format(code))
         ffibuilder.compile(verbose=True)
         remove('./readPTU/_readTTTRRecords_{}.c'.format(code))
-        # remove('./readPTU/_readTTTRRecords_{}.o'.format(code))
 
 
-class Build(install):
-    """Custom handler for the 'install' command."""
-
+class Build(build):
     def run(self):
         compile_library()
-        install.run(self)
-
-class Build_dev(develop):
-    """Custom handler for the 'install' command."""
-
-    def run(self):
-        compile_library()
-        develop.run(self)
-
+        super().run()
 
 setuptools.setup(
     name='readPTU',
@@ -76,6 +64,6 @@ setuptools.setup(
     packages=['readPTU'],
     zip_safe=False,
     setup_requires=["cffi>=1.11.2"],
-    install_requires=["cffi>=1.11.2"],
-    cmdclass={'install': Build, 'develop': Build_dev},
+    install_requires=["cffi>=1.11.2", "matplotlib"],
+    cmdclass={'build': Build},
     package_data={'': ['*.so', '*.c', '*.o', '*.pyd']}) # Note that we also have to include .pyd files for binaries to be copied over on windows
